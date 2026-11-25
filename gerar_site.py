@@ -190,10 +190,16 @@ html {{ background:var(--fundo); color:var(--texto); }}
 body {{ margin:0; font-family:"Atkinson Hyperlegible", system-ui, sans-serif; font-size:17px; line-height:1.5; }}
 main, header, footer {{ max-width:720px; margin:0 auto; padding:0 20px; }}
 header {{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding-top:28px; flex-wrap:wrap; }}
+header > div {{ flex:1 1 300px; min-width:0; }}
+.nb {{ white-space:nowrap; }}
+button.modo {{ flex:none; }}
 header h1 {{ font-size:1.05rem; font-weight:700; margin:0; letter-spacing:.01em; }}
 header p {{ margin:0; color:var(--sec); font-size:.9rem; }}
-button.modo {{ font:inherit; font-size:.85rem; color:var(--texto); background:transparent; border:1px solid var(--linha);
+button.modo {{ display:inline-flex; align-items:center; gap:8px; font:inherit; font-size:.85rem; color:var(--texto);
+  background:transparent; border:1px solid var(--linha);
   border-radius:999px; padding:6px 14px; cursor:pointer; }}
+button.modo[aria-pressed="true"] {{ background:var(--texto); color:var(--fundo); border-color:var(--texto); }}
+.olho {{ flex:none; }}
 :focus-visible {{ outline:3px solid var(--foco); outline-offset:2px; }}
 .agora {{ margin:28px 0 8px; padding:26px 24px 24px; background:var(--painel); border-radius:14px; border-left:6px solid var(--meio); }}
 .agora.bom {{ border-left-color:var(--bom); }} .agora.ruim {{ border-left-color:var(--ruim); }}
@@ -249,9 +255,17 @@ try {{ if (localStorage.getItem("modoVermelho") === "1") document.documentElemen
 <header>
   <div>
     <h1>Observatório {e(site)}: céu para observação</h1>
-    <p>Previsão automática a partir da radiossonda de Confins e do satélite GOES-19</p>
+    <p>Previsão automática a partir da radiossonda de Confins e do satélite <span class="nb">GOES-19</span></p>
   </div>
-  <button class="modo" type="button" aria-pressed="false" id="modo">Luz vermelha</button>
+  <button class="modo" type="button" aria-pressed="false" id="modo"
+          title="Cores vermelhas para preservar a visão no escuro">
+    <svg class="olho" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+      <path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12Z"
+            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+      <circle cx="12" cy="12" r="3.4" fill="currentColor"/>
+    </svg>
+    <span>Modo noturno</span>
+  </button>
 </header>
 <main>
 {''.join(partes)}
@@ -278,7 +292,7 @@ try {{ if (localStorage.getItem("modoVermelho") === "1") document.documentElemen
 (function () {{
   var b = document.getElementById("modo"), h = document.documentElement;
   function sync() {{ var on = h.classList.contains("vermelho"); b.setAttribute("aria-pressed", on ? "true" : "false");
-    b.textContent = on ? "Cores normais" : "Luz vermelha"; }}
+    b.title = on ? "Voltar às cores normais" : "Cores vermelhas para preservar a visão no escuro"; }}
   b.addEventListener("click", function () {{ h.classList.toggle("vermelho");
     try {{ localStorage.setItem("modoVermelho", h.classList.contains("vermelho") ? "1" : "0"); }} catch (e) {{}}
     sync(); }});
