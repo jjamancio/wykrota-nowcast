@@ -32,6 +32,8 @@ A cada execução sai um relatório em PDF com as notas de **transparência** e 
 | `lrit_info.py` | Mostra o cabeçalho dos `.lrit` (produto, horário, tabela de calibração). |
 | `previsao.sh` | Executa tudo em sequência. Ignora sondagens ainda em voo. |
 | `gerar_site.py` / `publicar.sh` | Gera e publica a página com os PDFs. |
+| `verificar.py` / `verificar.sh` | Confere as previsões com a nebulosidade observada pelo GOES-19 e com o registro manual. |
+| `registro_observacoes.csv` | Registro do que os observadores viram (formato em [docs/registro_observacoes.md](docs/registro_observacoes.md)). |
 | `astro_config.toml` | Todos os limiares das regras. |
 | `config.local.sh.example` | Modelo da configuração da sua máquina (caminhos, observatório, publicação). |
 
@@ -103,6 +105,28 @@ Os relatórios ficam na branch `gh-pages`. Ela é **recriada a cada publicação
 5. Rode `./publicar.sh` uma vez. Depois, em **Settings → Pages**, escolha **Deploy from a branch → gh-pages → / (root)**.
 
 A página fica em `https://SEU_USUARIO.github.io/wykrota-nowcast/`. O link fixo para o relatório mais recente é `…/relatorios/ultimo.pdf`. A página tem um modo de **luz vermelha**, para consultar no observatório sem perder a adaptação ao escuro.
+
+## Verificação das previsões
+
+As notas só ficam confiáveis depois de comparadas com o que aconteceu. O `verificar.sh` faz isso todo dia:
+
+1. **Automático, pelo satélite.** Para cada relatório, mede o céu claro e os cirrus num raio de 25 km do observatório, nas imagens do GOES-19 do horário-alvo até 3 h depois. Converte isso numa "transparência observada" de 1 a 5 e compara com a prevista. O resultado de cada imagem fica em cache, então a verificação continua valendo depois que as imagens forem apagadas.
+2. **Registro dos observadores.** Se o `registro_observacoes.csv` tiver noites anotadas, compara também transparência e seeing com o que foi visto no local. O formato e as escalas estão em [docs/registro_observacoes.md](docs/registro_observacoes.md).
+
+Cron sugerido, de manhã:
+
+```cron
+10 7 * * * /caminho/wykrota-nowcast/verificar.sh >> $HOME/astro_previsoes/cron.log 2>&1
+```
+
+Saídas em `$OUT/verificacao/`:
+
+- `verificacao.csv`: uma linha por previsão;
+- `verificacao_resumo.md`: viés (positivo = otimista demais), erro médio, acertos exatos e com ±1 ponto, por antecedência, mais a matriz de confusão.
+
+A linha mais útil do resumo é a da nota final **com satélite pesando menos de 50%**. Quando o satélite pesa muito, a previsão já é praticamente uma observação.
+
+Com algumas dezenas de noites verificadas, esses números indicam quais limiares do `astro_config.toml` ajustar.
 
 ## Como as notas são calculadas
 

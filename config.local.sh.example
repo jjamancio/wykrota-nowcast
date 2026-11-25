@@ -21,6 +21,10 @@ LAT=-19.824167
 LON=-43.690278
 ELEV=1500
 
+# Verificação (verificar.sh): registro manual e pasta dos resultados
+REGISTRO="$(dirname "${BASH_SOURCE[0]}")/registro_observacoes.csv"
+VERIF_DIR="$OUT/verificacao"
+
 # Minutos sem modificação para considerar um log de sonda concluído
 LOG_QUIET_MIN=15
 
