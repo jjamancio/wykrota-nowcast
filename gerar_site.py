@@ -113,20 +113,24 @@ def montar_html(itens, site, tz, url_repo, dias):
         cab = "".join(f'<th scope="col"><a href="relatorios/{e(r["pdf"].name)}">'
                       f'{r["t"].astimezone(tz):%H:%M}</a></th>' for r in runs)
 
-        def linha(nome, chave, mapa=None):
+        def linha(nome, chave, dica, mapa=None):
+            """mapa: valor → (tom 1–5, texto curto dentro do bloco)."""
             cels = []
             for r in runs:
                 v = r["d"].get(chave)
                 if mapa:
-                    n = mapa.get(v, 1)
+                    n, curto = mapa.get(v, (1, "?"))
                     txt = str(v)
                 else:
                     n = int(v or 1)
-                    txt = f"{n} de 5"
+                    curto = str(n)
+                    txt = f"nota {n} de 5"
                 cels.append(f'<td><a class="b {nivel_cor(n)}" href="relatorios/{e(r["pdf"].name)}" '
-                            f'title="{e(nome)} {e(txt)} — {r["t"].astimezone(tz):%H:%M}">'
-                            f'<span class="sr">{e(txt)}</span></a></td>')
-            return f'<tr><th scope="row">{nome}</th>{"".join(cels)}</tr>'
+                            f'title="{e(nome)}: {e(txt)} ({r["t"].astimezone(tz):%H:%M})" '
+                            f'aria-label="{e(nome)}: {e(txt)}, {r["t"].astimezone(tz):%H:%M}">'
+                            f'{e(curto)}</a></td>')
+            return (f'<tr><th scope="row">{nome}<span class="dica">{dica}</span></th>'
+                    f'{"".join(cels)}</tr>')
 
         blocos.append(f"""
 <section class="noite">
@@ -134,11 +138,14 @@ def montar_html(itens, site, tz, url_repo, dias):
   <div class="rolagem"><table>
     <thead><tr><th scope="col"><span class="sr">Item</span></th>{cab}</tr></thead>
     <tbody>
-      {linha("Transparência", "transparencia")}
-      {linha("Seeing", "seeing")}
-      {linha("Chuva", "chuva", {"baixo": 5, "moderado": 3, "alto": 1})}
-      {linha("Orvalho", "orvalho", {"baixo": 5, "moderado": 3, "alto": 2, "muito alto": 1})}
-      {linha("Montar", "montar", {"Sim": 5, "Oportunista": 3, "Não": 1})}
+      {linha("Transparência", "transparencia", "nota de 1 a 5")}
+      {linha("Seeing", "seeing", "nota de 1 a 5")}
+      {linha("Chuva", "chuva", "risco",
+             {"baixo": (5, "B"), "moderado": (3, "M"), "alto": (1, "A")})}
+      {linha("Orvalho", "orvalho", "risco",
+             {"baixo": (5, "B"), "moderado": (3, "M"), "alto": (2, "A"), "muito alto": (1, "MA")})}
+      {linha("Montar", "montar", "veredito",
+             {"Sim": (5, "Sim"), "Oportunista": (3, "Op."), "Não": (1, "Não")})}
     </tbody>
   </table></div>
 </section>""")
@@ -159,11 +166,13 @@ def montar_html(itens, site, tz, url_repo, dias):
   --fundo:#101B33; --painel:#1A2747; --texto:#E6EAF2; --sec:#9AA6BF; --linha:#2C3B63; --foco:#7FB2FF;
   --n5:#0B3D91; --n4:#2F6BC2; --n3:#6E95CF; --n2:#AFC0DD; --n1:#D9DEE8; --vazio:#24335A;
   --bom:#5FB98A; --meio:#E2B14A; --ruim:#E06C5F;
+  --t5:#F2F5FA; --t4:#F2F5FA; --t3:#0E1A33; --t2:#0E1A33; --t1:#0E1A33;
 }}
 html.vermelho {{
   --fundo:#0A0000; --painel:#160202; --texto:#FF5A4F; --sec:#B8322A; --linha:#3A0A08; --foco:#FF8A80;
   --n5:#FF3B30; --n4:#C92D24; --n3:#8F1F19; --n2:#5A130F; --n1:#2E0907; --vazio:#1F0605;
   --bom:#FF3B30; --meio:#C92D24; --ruim:#8F1F19;
+  --t5:#1A0000; --t4:#1A0000; --t3:#FFB3AD; --t2:#FF6B61; --t1:#FF5A4F;
 }}
 * {{ box-sizing:border-box; }}
 html {{ background:var(--fundo); color:var(--texto); }}
@@ -193,7 +202,7 @@ button.modo {{ font:inherit; font-size:.85rem; color:var(--texto); background:tr
 .n2 {{ background:var(--n2); }} .n1 {{ background:var(--n1); }} .vazio {{ background:var(--vazio); }}
 h3 {{ font-size:1rem; margin:34px 0 10px; }}
 .legenda {{ color:var(--sec); font-size:.9rem; margin:30px 0 0; }}
-.legenda ul {{ list-style:none; margin:0 0 6px; padding:0; display:flex; flex-wrap:wrap; gap:6px 16px; }}
+.legenda ul {{ list-style:none; margin:6px 0 8px; padding:0; display:flex; flex-wrap:wrap; gap:6px 16px; }}
 .legenda li {{ display:inline-flex; align-items:center; gap:7px; white-space:nowrap; }}
 .legenda p {{ margin:0; }}
 .legenda .c {{ width:20px; height:14px; }}
@@ -203,14 +212,19 @@ th {{ font-weight:400; color:var(--sec); text-align:left; padding-right:10px; wh
 thead th {{ text-align:center; padding:0 0 4px; }}
 thead a {{ color:var(--sec); text-decoration:none; }}
 td {{ padding:0; }}
-a.b {{ display:block; width:34px; height:24px; border-radius:3px; }}
+a.b {{ display:flex; align-items:center; justify-content:center; width:36px; height:26px; border-radius:3px;
+  text-decoration:none; font-weight:700; font-size:.78rem; }}
+a.b.n5 {{ color:var(--t5); }} a.b.n4 {{ color:var(--t4); }} a.b.n3 {{ color:var(--t3); }}
+a.b.n2 {{ color:var(--t2); }} a.b.n1 {{ color:var(--t1); }}
+th .dica {{ display:block; font-size:.74rem; color:var(--sec); opacity:.85; white-space:normal; max-width:15em; }}
 .sr {{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }}
 footer {{ color:var(--sec); font-size:.85rem; padding-top:40px; padding-bottom:40px; }}
 footer p {{ max-width:64ch; }}
 footer a {{ color:var(--texto); }}
 @media (max-width:480px) {{ .nota {{ grid-template-columns:1fr auto; }} .nota .val {{ grid-column:2; }}
   .nota .barra {{ grid-column:1 / -1; grid-row:2; }}
-  table {{ border-spacing:2px; font-size:.72rem; }} a.b {{ width:27px; height:22px; }}
+  table {{ border-spacing:2px; font-size:.72rem; }} a.b {{ width:29px; height:24px; font-size:.68rem; }}
+  th .dica {{ max-width:9em; font-size:.66rem; }}
   th {{ padding-right:4px; }} }}
 </style>
 <script>
@@ -228,11 +242,15 @@ try {{ if (localStorage.getItem("modoVermelho") === "1") document.documentElemen
 <main>
 {''.join(partes)}
 <div class="legenda">
-  <ul aria-label="Escala dos blocos">
-    <li><span class="c n5"></span>excelente</li><li><span class="c n4"></span>boa</li>
-    <li><span class="c n3"></span>regular</li><li><span class="c n2"></span>ruim</li><li><span class="c n1"></span>péssima</li>
+  <p>Cor dos blocos: o quanto cada item favorece a observação naquele horário.</p>
+  <ul aria-label="Escala de cores">
+    <li><span class="c n5"></span>muito favorável</li><li><span class="c n4"></span>favorável</li>
+    <li><span class="c n3"></span>neutro</li><li><span class="c n2"></span>desfavorável</li>
+    <li><span class="c n1"></span>muito desfavorável</li>
   </ul>
-  <p>Cada coluna é um horário da noite. Toque num bloco para abrir o relatório daquele horário.</p>
+  <p>Na chuva e no orvalho, o tom de "muito favorável" significa risco baixo. Dentro do bloco: a nota (1 a 5) ou B baixo,
+  M moderado, A alto, MA muito alto; em Montar, Op. é oportunista. Toque no bloco para abrir o relatório
+  daquele horário.</p>
 </div>
 {''.join(blocos)}
 </main>
