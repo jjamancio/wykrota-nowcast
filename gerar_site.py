@@ -80,6 +80,16 @@ def montar_html(itens, site, tz, url_repo, dias):
                     f'<span class="barra" aria-hidden="true">{cel}</span>'
                     f'<span class="val">{n} de 5</span></div>')
 
+        val = d.get("validade") or {}
+        val_html = ""
+        if val.get("nuvens"):
+            vn = datetime.fromisoformat(val["nuvens"]).astimezone(tz)
+            vs = datetime.fromisoformat(val["seeing"]).astimezone(tz)
+            vo = datetime.fromisoformat(val["orvalho"]).astimezone(tz)
+            val_html = (f'<p class="validade" data-ate="{e(val["nuvens"])}">Vale até as <strong>{vn:%H:%M}</strong> '
+                        f'para nuvens e transparência; seeing até {vs:%H:%M} e orvalho até {vo:%H:%M}.</p>'
+                        '<p class="expirado" hidden>Este relatório passou da validade para nuvens. '
+                        'Aguarde a próxima atualização antes de decidir.</p>')
         partes.append(f"""
 <section class="agora {classe}" aria-labelledby="veredito">
   <p class="quando">Atualizado às {tl:%H:%M} de {tl:%d/%m}, para a noite com alvo às {alvo:%H:%M}.
@@ -96,6 +106,7 @@ def montar_html(itens, site, tz, url_repo, dias):
     <div><dt>Planetária</dt><dd>{e(str(d.get("planetaria", "—")))}</dd></div>
     <div><dt>Lua</dt><dd>{round(100 * d.get("lua_iluminada", 0))}% iluminada</dd></div>
   </dl>
+  {val_html}
   <a class="botao" href="relatorios/{e(ult["pdf"].name)}">Abrir o relatório completo (PDF)</a>
 </section>""")
     else:
@@ -196,6 +207,9 @@ button.modo {{ font:inherit; font-size:.85rem; color:var(--texto); background:tr
 .val {{ font-weight:700; }}
 .extras {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:10px 18px; margin:0 0 22px; }}
 .extras dt {{ color:var(--sec); font-size:.85rem; }} .extras dd {{ margin:0; font-weight:700; }}
+.validade {{ margin:0 0 18px; color:var(--sec); max-width:60ch; }} .validade strong {{ color:var(--texto); }}
+.expirado {{ margin:0 0 18px; padding:10px 14px; border-radius:8px; background:var(--ruim); color:var(--fundo);
+  font-weight:700; max-width:60ch; }}
 .botao {{ display:inline-block; color:var(--fundo); background:var(--texto); text-decoration:none; font-weight:700;
   padding:11px 18px; border-radius:10px; }}
 .n5 {{ background:var(--n5); }} .n4 {{ background:var(--n4); }} .n3 {{ background:var(--n3); }}
@@ -269,6 +283,8 @@ try {{ if (localStorage.getItem("modoVermelho") === "1") document.documentElemen
     try {{ localStorage.setItem("modoVermelho", h.classList.contains("vermelho") ? "1" : "0"); }} catch (e) {{}}
     sync(); }});
   sync();
+  var v = document.querySelector(".validade"), x = document.querySelector(".expirado");
+  if (v && x && new Date(v.getAttribute("data-ate")) < new Date()) x.hidden = false;
 }})();
 </script>
 </body>

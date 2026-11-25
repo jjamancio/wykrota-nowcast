@@ -1,6 +1,7 @@
 # astro_config.toml — limiares das regras do astro_sounding.py e do goes_nowcast.py
 # Tabelas [[limiar, desconto], ...]: aplica o desconto do maior limiar ultrapassado.
 # [unidades] vento: "km/h", "m/s" ou "kt"
+# [validade]: por quantas horas cada parte do relatório vale (aparece no PDF e na página)
 
 [processamento]
 bin_m = 100.0
@@ -47,6 +48,13 @@ limite_ceu_profundo = 0.35
 
 [unidades]
 vento = "km/h"
+
+[validade]
+fuso = "America/Sao_Paulo"
+nuvens_satelite_h = 3.0
+nuvens_sonda_h = 12.0
+seeing_h = 18.0
+amanhecer_local = "06:00"
 
 [satelite]
 horizonte_h = 6.0

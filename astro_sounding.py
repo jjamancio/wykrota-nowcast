@@ -106,6 +106,13 @@ DEFAULTS = {
     "orvalho": {"alto_c": 2.0, "moderado_c": 4.0},
     "lua": {"limite_ceu_profundo": 0.35},
     "unidades": {"vento": "km/h"},        # "km/h", "m/s" ou "kt"
+    "validade": {
+        "fuso": "America/Sao_Paulo",
+        "nuvens_satelite_h": 3.0,   # nuvens/transparência com satélite: a partir do último quadro
+        "nuvens_sonda_h": 12.0,     # nuvens/transparência só com sonda: a partir do lançamento
+        "seeing_h": 18.0,           # seeing (vento em altitude): a partir do lançamento
+        "amanhecer_local": "06:00", # orvalho: tendência válida até o amanhecer
+    },
     "satelite": {
         "horizonte_h": 6.0,        # peso do satélite cai a zero após este intervalo até o alvo
         "dist_max_km": 20.0,       # aviso se o JSON do satélite for de outro ponto
@@ -726,6 +733,18 @@ def find_font():
     return None
 
 
+def validity_text(c):
+    v = c.get("validade")
+    if not v:
+        return ""
+    cfg = c["cfg"]
+    ger = datetime.now(timezone.utc)
+    fonte = "pelo satélite" if c.get("sat") else "só pela sondagem, sem satélite"
+    return (f"<b>Válido até</b> (hora local): nuvens e transparência às <b>{fmt_local(v['nuvens'], cfg, ger)}</b> "
+            f"({fonte}); seeing às {fmt_local(v['seeing'], cfg, ger)}; orvalho até o amanhecer "
+            f"({fmt_local(v['orvalho'], cfg, ger)}). Depois disso, use um relatório mais recente.")
+
+
 def build_pdf(out_pdf, png, ctx):
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
@@ -807,7 +826,8 @@ def build_pdf(out_pdf, png, ctx):
          P(fontes, small), Spacer(1, 4),
          box(f"<b>Transparência {T}/5 · Seeing {S}/5 · Chuva: {rep['chuva']['nivel']} · "
              f"Orvalho: {rep['orvalho']['nivel']}</b><br/>"
-             f"Montar o equipamento? <b>{rep['veredito']['montar'][0]}</b>: {rep['veredito']['montar'][1]}",
+             f"Montar o equipamento? <b>{rep['veredito']['montar'][0]}</b>: {rep['veredito']['montar'][1]}<br/>"
+             + validity_text(c),
              color), Spacer(1, 5), P("Ressalvas", h2)]
     for n in c["notes"]:
         s.append(B(n))
@@ -982,6 +1002,31 @@ def build_pdf(out_pdf, png, ctx):
 # --------------------------------------------------------------------------
 # Main
 # --------------------------------------------------------------------------
+def compute_validity(launch, target, sat, cfg):
+    """Até quando cada parte do relatório pode ser usada (datetimes UTC)."""
+    from zoneinfo import ZoneInfo
+    v = cfg["validade"]
+    tz = ZoneInfo(v["fuso"])
+    if sat:
+        nuvens = datetime.fromisoformat(sat["ultimo_quadro"]) + timedelta(hours=v["nuvens_satelite_h"])
+    else:
+        nuvens = launch + timedelta(hours=v["nuvens_sonda_h"])
+    seeing = launch + timedelta(hours=v["seeing_h"])
+    hh, mm = (int(x) for x in v["amanhecer_local"].split(":"))
+    ref = max(target, nuvens).astimezone(tz)
+    aman = ref.replace(hour=hh, minute=mm, second=0, microsecond=0)
+    if aman <= ref:
+        aman += timedelta(days=1)
+    orvalho = aman.astimezone(timezone.utc)
+    return dict(nuvens=nuvens, seeing=min(seeing, orvalho), orvalho=orvalho, geral=nuvens)
+
+
+def fmt_local(dt, cfg, ref=None):
+    from zoneinfo import ZoneInfo
+    loc = dt.astimezone(ZoneInfo(cfg["validade"]["fuso"]))
+    return f"{loc:%H:%M} de {loc:%d/%m}"
+
+
 def parse_target(txt, launch):
     if txt:
         txt = txt.replace("Z", "+00:00")
@@ -1162,6 +1207,8 @@ def main():
             winds[str(pl)] = dict(u=round(u, 2), v=round(v, 2), vel_ms=round(math.hypot(u, v), 2),
                                   dir=round((math.degrees(math.atan2(-u, -v)) + 360) % 360))
 
+    validade = compute_validity(launch, target, sat, cfg)
+
     stem = args.log.with_suffix("")
     out_png = args.png or Path(f"{stem}_skewt.png")
     out_pdf = args.pdf or Path(f"{stem}_astro.pdf")
@@ -1170,7 +1217,7 @@ def main():
                f"Skew-T — {meta['type']} {meta['serial']} — {launch:%Y-%m-%d %H:%MZ}", out_png)
     ctx = dict(site=args.site, target=target, meta=meta, notes=notes, rep=rep, parcels=parcels, pw=pw, k=kidx,
                frz=frz, trop=trop, levels=levels, layers=layers, shear=shear, lapse=lapse, moon=moon, cfg=cfg,
-               sat=sat, obs=obs)
+               sat=sat, obs=obs, validade=validade)
     build_pdf(out_pdf, str(out_png), ctx)
 
     summary = dict(
@@ -1186,7 +1233,7 @@ def main():
         observatorio=None if obs is None else {k: round(v, 2) for k, v in obs.items()},
         lat=args.lat, lon=args.lon,
         transparencia_detalhe={k: v for k, v in rep["transparencia"].items() if k != "detalhes"},
-        ventos=winds)
+        ventos=winds, validade={k: v.isoformat() for k, v in validade.items()})
     out_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2, default=str))
 
     print(f"{args.site} — alvo {target:%d/%m %H:%MZ}")

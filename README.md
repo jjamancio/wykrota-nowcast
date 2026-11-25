@@ -106,6 +106,19 @@ Os relatórios ficam na branch `gh-pages`. Ela é **recriada a cada publicação
 
 A página fica em `https://SEU_USUARIO.github.io/wykrota-nowcast/`. O link fixo para o relatório mais recente é `…/relatorios/ultimo.pdf`. A página tem um modo de **luz vermelha**, para consultar no observatório sem perder a adaptação ao escuro.
 
+## Validade do relatório
+
+Cada relatório diz até quando pode ser usado (hora local), no quadro de resumo do PDF e na página:
+
+| Parte | Vale até | Ajuste em `[validade]` |
+|---|---|---|
+| Nuvens e transparência, com satélite | último quadro do GOES + 3 h | `nuvens_satelite_h` |
+| Nuvens e transparência, só com sondagem | lançamento da sonda + 12 h | `nuvens_sonda_h` |
+| Seeing | lançamento da sonda + 18 h (no máximo até o amanhecer) | `seeing_h` |
+| Orvalho | amanhecer (06:00) | `amanhecer_local` |
+
+Quando a validade das nuvens passa, a página mostra um aviso para esperar a próxima atualização.
+
 ## Verificação das previsões
 
 As notas só ficam confiáveis depois de comparadas com o que aconteceu. O `verificar.sh` faz isso todo dia:
