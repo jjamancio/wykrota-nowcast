@@ -1,0 +1,84 @@
+# astro_config.toml — limiares das regras do astro_sounding.py e do goes_nowcast.py
+# Tabelas [[limiar, desconto], ...]: aplica o desconto do maior limiar ultrapassado.
+# [unidades] vento: "km/h", "m/s" ou "kt"
+
+[processamento]
+bin_m = 100.0
+camada_cisalhamento_m = 500.0
+p_topo_hpa = 100.0
+
+[nuvens]
+limite_gelo_c = -20.0
+ur_agua_provavel = 93.0
+ur_agua_possivel = 85.0
+ur_gelo_provavel = 100.0
+ur_gelo_possivel = 90.0
+espessura_min_m = 200.0
+
+[transparencia]
+desconto_baixa = 1.5
+desconto_media = 2.0
+desconto_alta = 1.0
+fator_possivel = 0.4
+pw_mm = [[35.0, 0.5], [45.0, 1.0]]
+ur_baixa_media = [90.0, 0.5]
+
+[seeing]
+jato_ms = [[25.0, 0.5], [35.0, 1.0], [50.0, 2.0]]
+cisalhamento_ms_km = [[8.0, 0.5], [12.0, 1.0], [18.0, 1.5]]
+ri_camadas = [[1, 0.5], [3, 1.0]]
+cape_jkg = [[300.0, 0.5], [1000.0, 1.0]]
+k_index = [[35.0, 0.5]]
+agl_min_m = 1000.0
+vento_local_ms = [[8.0, 0.5], [12.0, 1.0]]
+
+[chuva]
+cape_jkg = [[500.0, 1], [1500.0, 2]]
+pw_mm = [[40.0, 1]]
+ur_700_500 = [[80.0, 1]]
+k_index = [[30.0, 1], [35.0, 2]]
+
+[orvalho]
+alto_c = 2.0
+moderado_c = 4.0
+
+[lua]
+limite_ceu_profundo = 0.35
+
+[unidades]
+vento = "km/h"
+
+[satelite]
+horizonte_h = 6.0
+dist_max_km = 20.0
+peso_min_l2 = 0.5
+cobertura_min_l2 = 0.3
+lst_orvalho_c = 2.0
+
+# ---- goes_nowcast.py ----
+[goes.nuvens]
+bt_opaca_fria_k = 253.0
+delta_nuvem_k = 8.0
+excesso_btd_cirrus_k = 1.5
+delta_cirrus_bt_k = 2.0
+btd_nevoeiro_k = -2.0
+refl_nuvem_dia = 0.35
+tref_min_k = 275.0
+tref_padrao_dia_k = 300.0
+tref_padrao_noite_k = 290.0
+btd_claro_padrao_k = 3.0
+elev_sol_noite_graus = -5.0
+
+[goes.analise]
+raios_km = [25, 50, 100]
+janela_km = 260
+raio_amostra_km = 20
+horizontes_h = [0.5, 1.0, 1.5, 2.0, 3.0]
+desloc_max_kmh = 120.0
+pico_min_correlacao = 0.05
+dispersao_max_frac = 0.5
+dif_dir_vento_max = 45.0
+
+[goes.nota]
+peso_agora = 0.5
+penal_cirrus = 1.0

@@ -1,0 +1,19 @@
+# Configuração local (caminhos da máquina, remoto de publicação)
+config.local.sh
+
+# Dados brutos e saídas — nunca versionar
+*.log
+*.lrit
+*.cbor
+*.pdf
+*.png
+*.json
+!docs/*.png
+astro_previsoes/
+_site/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

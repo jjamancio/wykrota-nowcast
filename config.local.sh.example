@@ -1,0 +1,35 @@
+# config.local.sh — configuração da SUA máquina (não vai para o Git).
+# Copie para config.local.sh e ajuste:  cp config.local.sh.example config.local.sh
+
+# Python com numpy, pandas, matplotlib, reportlab e pillow
+PY="$HOME/.venvs/astro/bin/python"
+
+# Logs do radiosonde_auto_rx (*_sonde.log)
+SONDE_LOGS="$HOME/radiosonde_auto_rx/auto_rx/log"
+
+# Saídas do SatDump (GOES-19 HRIT)
+GOES_ROOT="/caminho/para/goesdata/IMAGES/GOES-19/Full Disk"
+GOES_L2="/caminho/para/goesdata/L2/GOES-19/Full Disk"
+GOES_LRIT="/caminho/para/goesdata/LRIT"
+
+# Onde os relatórios são gravados
+OUT="$HOME/astro_previsoes"
+
+# Observatório
+SITE="Wykrota"
+LAT=-19.824167
+LON=-43.690278
+ELEV=1500
+
+# Minutos sem modificação para considerar um log de sonda concluído
+LOG_QUIET_MIN=15
+
+# ---- Publicação na GitHub Page (publicar.sh) ----
+# Deixe PUBLICAR=0 para só gerar os relatórios localmente.
+PUBLICAR=0
+# Endereço SSH do repositório (use uma deploy key com permissão de escrita)
+GIT_REMOTE="git@github.com:SEU_USUARIO/wykrota-nowcast.git"
+# Dias de relatórios mantidos na página
+DIAS_PAGINA=7
+# Endereço público da página (aparece no rodapé)
+URL_REPO="https://github.com/SEU_USUARIO/wykrota-nowcast"
