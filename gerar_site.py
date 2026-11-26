@@ -26,9 +26,9 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 VEREDITO = {
-    "Sim": ("Vale montar o equipamento", "bom"),
+    "Sim": ("A noite está boa para observar", "bom"),
     "Oportunista": ("Só um setup leve, se abrir", "meio"),
-    "Não": ("Não compensa montar hoje", "ruim"),
+    "Não": ("Não compensa observar hoje", "ruim"),
 }
 
 
