@@ -254,7 +254,7 @@ try {{ if (localStorage.getItem("modoVermelho") === "1") document.documentElemen
 <body>
 <header>
   <div>
-    <h1>Observatório {e(site)}: céu para observação</h1>
+    <h1>Observatório {e(site)}: condições do céu para observação</h1>
     <p>Previsão automática a partir da radiossonda de Confins e do satélite <span class="nb">GOES-19</span></p>
   </div>
   <button class="modo" type="button" aria-pressed="false" id="modo"
