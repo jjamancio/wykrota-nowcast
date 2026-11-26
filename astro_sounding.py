@@ -605,6 +605,11 @@ def score_all(prof, layers, shear_df, parcels, pw, sfc, moon_frac, cfg, sfc_elev
     return rep
 
 
+# Texto exibido para o veredito (o JSON continua com "Sim", "Oportunista" e "Não")
+OBSERVAR_TXT = {"Sim": "A noite está boa para observar", "Oportunista": "Só um setup leve, se abrir",
+                "Não": "Não compensa observar hoje"}
+
+
 def verdict(T, S, moon_frac, cfg):
     lim = cfg["lua"]["limite_ceu_profundo"]
     if T >= 4 and moon_frac < lim:
@@ -624,11 +629,11 @@ def verdict(T, S, moon_frac, cfg):
     else:
         pla = ("Desfavorável", "Turbulência e/ou nuvens.")
     if "Favorável" in (dso[0], pla[0]):
-        mont = ("Sim", "Há janela útil para ao menos uma modalidade.")
+        mont = ("Sim", "há janela útil para ao menos uma modalidade.")
     elif "Marginal" in (dso[0], pla[0]):
-        mont = ("Oportunista", "Só um setup leve e rápido, conferindo o satélite antes.")
+        mont = ("Oportunista", "confira o satélite antes de sair.")
     else:
-        mont = ("Não", "Não compensa montar o equipamento principal.")
+        mont = ("Não", "nuvens, umidade ou turbulência desfavorecem tanto o céu profundo quanto a planetária.")
     return dict(ceu_profundo=dso, planetaria=pla, montar=mont)
 
 
@@ -826,7 +831,7 @@ def build_pdf(out_pdf, png, ctx):
          P(fontes, small), Spacer(1, 4),
          box(f"<b>Transparência {T}/5 · Seeing {S}/5 · Chuva: {rep['chuva']['nivel']} · "
              f"Orvalho: {rep['orvalho']['nivel']}</b><br/>"
-             f"Montar o equipamento? <b>{rep['veredito']['montar'][0]}</b>: {rep['veredito']['montar'][1]}<br/>"
+             f"Veredito: <b>{OBSERVAR_TXT[rep['veredito']['montar'][0]]}</b> — {rep['veredito']['montar'][1]}<br/>"
              + validity_text(c),
              color), Spacer(1, 5), P("Ressalvas", h2)]
     for n in c["notes"]:
@@ -976,7 +981,7 @@ def build_pdf(out_pdf, png, ctx):
     s.append(table([["Modalidade", "Recomendação"],
                     ["Céu profundo (longa exposição)", f"<b>{v['ceu_profundo'][0]}</b>: {v['ceu_profundo'][1]}"],
                     ["Planetária/lunar (alta ampliação)", f"<b>{v['planetaria'][0]}</b>: {v['planetaria'][1]}"],
-                    ["Montar o equipamento?", f"<b>{v['montar'][0]}</b>: {v['montar'][1]}"]],
+                    ["Veredito", f"<b>{OBSERVAR_TXT[v['montar'][0]]}</b> — {v['montar'][1]}"]],
                    [5.5 * cm, 11.5 * cm]))
     s.append(Spacer(1, 4))
     s.append(P(f"Lua: {c['moon'][0]:.0%} iluminada (idade {c['moon'][1]:.1f} dias) no horário-alvo.", small))
@@ -1239,7 +1244,7 @@ def main():
     print(f"{args.site} — alvo {target:%d/%m %H:%MZ}")
     print(f"  Transparência {rep['transparencia']['nota']}/5 | Seeing {rep['seeing']['nota']}/5 | "
           f"Chuva {rep['chuva']['nivel']} | Orvalho {rep['orvalho']['nivel']}")
-    print(f"  Montar? {rep['veredito']['montar'][0]} — {rep['veredito']['montar'][1]}")
+    print(f"  Veredito: {OBSERVAR_TXT[rep['veredito']['montar'][0]]} — {rep['veredito']['montar'][1]}")
     print(f"  PDF: {out_pdf}\n  JSON: {out_json}")
 
 
