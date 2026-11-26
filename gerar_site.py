@@ -117,86 +117,130 @@ def motivos(d):
     return lista[:3]
 
 
-ICONE_INFO = ('<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">'
-              '<circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="1.8"/>'
-              '<rect x="11" y="10.5" width="2" height="6.5" rx="1" fill="currentColor"/>'
-              '<circle cx="12" cy="7.6" r="1.25" fill="currentColor"/></svg>')
-
-ICONE_OLHO = ('<svg class="olho" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">'
-              '<path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12Z" fill="none" '
-              'stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>'
-              '<circle cx="12" cy="12" r="3.4" fill="currentColor"/></svg>')
+def _svg(corpo, w=18, h=18, classe=""):
+    return (f'<svg class="{classe}" viewBox="0 0 24 24" width="{w}" height="{h}" aria-hidden="true" '
+            f'focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" '
+            f'stroke-linejoin="round">{corpo}</svg>')
 
 
-def montar_html(itens, site, tz, url_repo, dias):
+ICONE_INFO = _svg('<circle cx="12" cy="12" r="9.5"/><path d="M12 11v6"/><circle cx="12" cy="7.6" r=".6" '
+                  'fill="currentColor"/>')
+ICONE_OLHO = _svg('<path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12Z"/>'
+                  '<circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/>', classe="olho")
+ICONE_ALERTA = _svg('<path d="M12 3 2.5 20h19L12 3Z"/><path d="M12 10v4.5"/><circle cx="12" cy="17.2" r=".6" '
+                    'fill="currentColor"/>', 20, 20)
+# Telescópio em tripé (setup completo), luneta pequena (setup leve), telescópio riscado (guardado)
+ICONE_SETUP = {
+    "Sim": _svg('<path d="m3.5 11.5 11-5 1.8 3.8-11 5Z"/><path d="m14.5 6.5 3.2-1.5 1.8 3.8-3.2 1.5"/>'
+                '<path d="M10 14.5 6.5 21M10 14.5l3.5 6.5M10 14.5V21"/>', 40, 40),
+    "Oportunista": _svg('<path d="m5 12.5 8-3.6 1.3 2.8-8 3.6Z"/><path d="M9.5 14.5 8 19M9.5 14.5 11.5 19"/>'
+                        '<path d="M17 7.5h3M18.5 6v3" opacity=".7"/>', 40, 40),
+    "Não": _svg('<path d="m3.5 11.5 11-5 1.8 3.8-11 5Z" opacity=".55"/><path d="M10 14.5 6.5 21M10 14.5l3.5 6.5" '
+                'opacity=".55"/><path d="M3 3l18 18"/>', 40, 40),
+}
+EQUIPAMENTO = {
+    "Sim": ("Setup completo", "Monte o equipamento principal: há janela útil para ao menos uma modalidade."),
+    "Oportunista": ("Setup leve e rápido", "Algo fácil de montar e desmontar; confira o satélite antes de sair."),
+    "Não": ("Equipamento guardado", "Não vale levar o equipamento para a serra nesta noite."),
+}
+
+
+def montar_html(itens, site, tz, url_repo, dias, tz_nome="horário de Brasília (UTC−3)"):
     e = html.escape
     ult = itens[-1] if itens else None
     partes = []
+    banner = ""
 
     if ult:
         d = ult["d"]
         tl = ult["t"].astimezone(tz)
         alvo = datetime.fromisoformat(d["alvo"]).astimezone(tz)
-        frase, classe = VEREDITO.get(d.get("montar"), ("Sem veredito", "meio"))
+        chave = d.get("montar") if d.get("montar") in VEREDITO else "Oportunista"
+        frase, classe = VEREDITO[chave]
         det = d.get("transparencia_detalhe") or {}
-        fonte = "radiossonda e satélite GOES-19" if "peso_sat" in det else "radiossonda (sem satélite)"
+        fonte = ('radiossonda e satélite <span class="nb">GOES-19</span>' if "peso_sat" in det
+                 else "radiossonda (sem satélite)")
         val = d.get("validade") or {}
 
-        def hl(chave):
-            v = val.get(chave)
+        def hl(k):
+            v = val.get(k)
             return datetime.fromisoformat(v).astimezone(tz) if v else None
 
         vn, vs, vo = hl("nuvens"), hl("seeing"), hl("orvalho")
         selo = ""
-        alerta = ""
         if vn:
-            selo = (f'<span class="selo" data-ate="{e(val["nuvens"])}" data-hora="{vn:%H:%M}">'
+            selo = (f'<span class="selo mono" data-ate="{e(val["nuvens"])}" data-hora="{vn:%H:%M}">'
                     f'válido até {vn:%H:%M}</span>')
-            alerta = ('<p class="expirado" role="alert" hidden>Este relatório passou da validade às '
-                      f'{vn:%H:%M}. Aguarde a próxima atualização antes de decidir.</p>')
+            banner = (f'<div class="banner-expirado" role="alert" hidden>{ICONE_ALERTA}<p>Este relatório passou '
+                      f'da validade às <span class="mono">{vn:%H:%M}</span>. Aguarde a próxima atualização antes '
+                      'de decidir.</p></div>')
         lis = "".join(f"<li>{e(m)}</li>" for m in motivos(d))
+        eq_nome, eq_txt = EQUIPAMENTO[chave]
+        cdp, pla = str(d.get("ceu_profundo", "—")), str(d.get("planetaria", "—"))
+
+        def chip(nome, status):
+            return (f'<li><span class="led {nivel_cor(NIVEL_ALVO.get(status, 3))}" aria-hidden="true"></span>'
+                    f'<span class="chip-nome">{nome}</span><span class="chip-val">{e(status)}</span></li>')
 
         partes.append(f"""
-<section class="hero {classe}" aria-labelledby="veredito">
-  <p class="meta"><span>Atualizado às {tl:%H:%M} de {tl:%d/%m}</span>{selo}</p>
-  {alerta}
-  <h2 id="veredito">{e(frase)}</h2>
-  {f'<ul class="motivos">{lis}</ul>' if lis else ''}
-  <p class="fonte">Previsão para a noite, com alvo às {alvo:%H:%M}. Fontes: {fonte}.</p>
-  <a class="botao" href="relatorios/{e(ult["pdf"].name)}">Abrir o relatório completo (PDF)</a>
+<section class="decisao {classe}" aria-labelledby="veredito">
+  <div class="decisao-principal">
+    <p class="meta"><span>Atualizado às <span class="mono">{tl:%H:%M}</span> de <span class="mono">{tl:%d/%m}</span>
+      ({e(tz_nome.split(" (")[0])})</span>{selo}</p>
+    <p class="status"><span class="led-status" aria-hidden="true"></span><span id="veredito-rot">Veredito</span></p>
+    <h2 id="veredito">{e(frase)}</h2>
+    {f'<ul class="motivos">{lis}</ul>' if lis else ''}
+    <p class="fonte">Previsão para a noite, com alvo às <span class="mono">{alvo:%H:%M}</span>. Fontes: {fonte}.</p>
+    <a class="botao" href="relatorios/{e(ult["pdf"].name)}">Abrir o relatório completo (PDF)</a>
+  </div>
+  <aside class="equipamento" aria-label="Equipamento recomendado">
+    <p class="eq-rot">Equipamento recomendado</p>
+    <div class="eq-icone">{ICONE_SETUP[chave]}</div>
+    <p class="eq-nome">{eq_nome}</p>
+    <p class="eq-txt">{eq_txt}</p>
+    <ul class="chips">{chip("Céu profundo", cdp)}{chip("Planetária e lunar", pla)}</ul>
+  </aside>
 </section>""")
 
-        def barra(n):
-            return "".join(f'<span class="c {nivel_cor(n) if i < n else "vazio"}"></span>' for i in range(5))
+        def medidor(n):
+            seg = "".join(f'<span class="{nivel_cor(n) if i < n else "vazio"}"></span>' for i in range(5))
+            return f'<span class="medidor" role="img" aria-label="{n} de 5">{seg}</span>'
 
-        def card(rot, valor, nivel, extra="", rodape=""):
-            return (f'<div class="card"><p class="rot">{rot}</p>'
-                    f'<p class="valor"><span class="ponto {nivel_cor(nivel)}" aria-hidden="true"></span>{valor}</p>'
-                    f'{extra}{f"<p class=rodape>{rodape}</p>" if rodape else ""}</div>')
+        def card(rot, valor_html, rodape="", extra_cls=""):
+            return (f'<div class="card {extra_cls}"><p class="rot">{rot}</p>{valor_html}'
+                    f'{f"<p class=rodape>{rodape}</p>" if rodape else ""}</div>')
+
+        def nota(n):
+            return (f'<div class="valor-linha"><p class="valor mono">{n}<span class="de"> de 5</span></p>'
+                    f'{medidor(n)}</div>')
+
+        def risco(txt, nivel):
+            return (f'<div class="valor-linha"><p class="valor"><span class="led {nivel_cor(nivel)}" '
+                    f'aria-hidden="true"></span>risco {e(txt)}</p></div>')
 
         T, S = int(d.get("transparencia", 1)), int(d.get("seeing", 1))
         chuva, orvalho = str(d.get("chuva", "—")), str(d.get("orvalho", "—"))
+        ate = lambda x: f'válido até <span class="mono">{x:%H:%M}</span>' if x else ""  # noqa: E731
         atm = "".join([
-            card("Transparência", f"{T} de 5", T, f'<span class="barra" aria-hidden="true">{barra(T)}</span>',
-                 f"válido até {vn:%H:%M}" if vn else ""),
-            card("Seeing", f"{S} de 5", S, f'<span class="barra" aria-hidden="true">{barra(S)}</span>',
-                 f"válido até {vs:%H:%M}" if vs else ""),
-            card("Chuva", f"risco {e(chuva)}", NIVEL_RISCO_CHUVA.get(chuva, 3), "",
-                 f"válido até {vn:%H:%M}" if vn else ""),
-            card("Orvalho", f"risco {e(orvalho)}", NIVEL_RISCO_ORVALHO.get(orvalho, 3), "",
-                 f"até o amanhecer ({vo:%H:%M})" if vo else ""),
+            card("Transparência", nota(T), ate(vn)),
+            card("Seeing", nota(S), ate(vs)),
+            card("Chuva", risco(chuva, NIVEL_RISCO_CHUVA.get(chuva, 3)), ate(vn)),
+            card("Orvalho", risco(orvalho, NIVEL_RISCO_ORVALHO.get(orvalho, 3)),
+                 f'até o amanhecer (<span class="mono">{vo:%H:%M}</span>)' if vo else ""),
         ])
         lua = float(d.get("lua_iluminada", 0))
-        idade = idade_lua(datetime.fromisoformat(d["alvo"]))
-        crescente = idade < 29.530588853 / 2
-        fase = ("nova" if lua < 0.03 else "cheia" if lua > 0.97 else
-                ("crescente" if crescente else "minguante"))
-        cdp, pla = str(d.get("ceu_profundo", "—")), str(d.get("planetaria", "—"))
+        crescente = idade_lua(datetime.fromisoformat(d["alvo"])) < 29.530588853 / 2
+        fase = ("nova" if lua < 0.03 else "cheia" if lua > 0.97 else ("crescente" if crescente else "minguante"))
+
+        def alvo_val(status):
+            return (f'<div class="valor-linha"><p class="valor"><span class="led {nivel_cor(NIVEL_ALVO.get(status, 3))}" '
+                    f'aria-hidden="true"></span>{e(status)}</p></div>')
+
         alvos = "".join([
-            card("Céu profundo", e(cdp), NIVEL_ALVO.get(cdp, 3), "", "galáxias, nebulosas, longa exposição"),
-            card("Planetária e lunar", e(pla), NIVEL_ALVO.get(pla, 3), "", "planetas, Lua, alta ampliação"),
-            (f'<div class="card"><p class="rot">Lua</p><p class="valor">{icone_lua(lua, crescente)}'
-             f'{round(100 * lua)}% iluminada</p><p class="rodape">fase {fase}</p></div>'),
+            card("Céu profundo", alvo_val(cdp), "galáxias, nebulosas, longa exposição"),
+            card("Planetária e lunar", alvo_val(pla), "planetas, Lua, alta ampliação"),
+            card("Lua", f'<div class="valor-linha">{icone_lua(lua, crescente)}<p class="valor">'
+                        f'<span class="mono">{round(100 * lua)}%</span> iluminada</p></div>', f"fase {fase}", "card-lua"),
         ])
         partes.append(f"""
 <section class="grupo" aria-labelledby="g-atm">
@@ -208,18 +252,18 @@ def montar_html(itens, site, tz, url_repo, dias):
   <div class="cards c3">{alvos}</div>
 </section>""")
     else:
-        partes.append('<section class="hero meio"><h2>Nenhum relatório nos últimos dias</h2>'
-                      '<p class="fonte">A página volta a mostrar a previsão assim que o próximo relatório '
-                      'for gerado.</p></section>')
+        partes.append('<section class="decisao meio"><div class="decisao-principal"><h2>Nenhum relatório nos '
+                      'últimos dias</h2><p class="fonte">A página volta a mostrar a previsão assim que o próximo '
+                      'relatório for gerado.</p></div></section>')
 
-    # Legenda: barra sempre visível + explicação recolhível
+    # Legenda: barra sempre visível + explicação recolhida
     partes.append(f"""
 <section class="legenda" aria-labelledby="g-noites">
   <h3 id="g-noites">Noites anteriores e de hoje</h3>
   <ul class="escala" aria-label="Cores: condição para observação">
-    <li><span class="c n5"></span>muito favorável</li><li><span class="c n4"></span>favorável</li>
-    <li><span class="c n3"></span>neutro</li><li><span class="c n2"></span>desfavorável</li>
-    <li><span class="c n1"></span>muito desfavorável</li>
+    <li><span class="sw n5"></span>muito favorável</li><li><span class="sw n4"></span>favorável</li>
+    <li><span class="sw n3"></span>neutro</li><li><span class="sw n2"></span>desfavorável</li>
+    <li><span class="sw n1"></span>muito desfavorável</li>
   </ul>
   <details id="como-ler">
     <summary>{ICONE_INFO}<span>Como ler a tabela e as cores</span></summary>
@@ -228,24 +272,24 @@ def montar_html(itens, site, tz, url_repo, dias):
       Em Chuva e Orvalho, o tom de "muito favorável" indica risco baixo.</p>
       <p><strong>Siglas dentro dos blocos</strong></p>
       <ul>
-        <li><strong>1 a 5:</strong> nota geral da condição</li>
-        <li><strong>B / M / A / MA:</strong> risco baixo, moderado, alto ou muito alto</li>
-        <li><strong>Op. (em Observar):</strong> oportunista (apenas um setup leve, se abrir)</li>
+        <li><strong class="mono">1 a 5:</strong> nota geral da condição</li>
+        <li><strong class="mono">B / M / A / MA:</strong> risco baixo, moderado, alto ou muito alto</li>
+        <li><strong class="mono">Op.</strong> <strong>(em Observar):</strong> oportunista (apenas um setup leve, se abrir)</li>
       </ul>
+      <p>Todos os horários da página estão no {e(tz_nome)}.</p>
       <p>Cada coluna é um horário em que a previsão foi atualizada; a coluna destacada é a do horário-alvo.
       Toque em qualquer bloco para abrir o relatório completo daquele horário.</p>
     </div>
   </details>
 </section>""")
 
-    # Faixas por noite (mais recente primeiro)
+    # Matriz horária por noite (mais recente primeiro)
     noites = {}
     for it in itens:
         noites.setdefault(noite_de(it["t"].astimezone(tz)), []).append(it)
     for nd in sorted(noites, reverse=True):
         runs = noites[nd]
         dia2 = nd + timedelta(days=1)
-        # coluna do horário-alvo: a execução mais próxima do alvo (até 20 min)
         try:
             alvo_n = datetime.fromisoformat(runs[-1]["d"]["alvo"])
             dif = [abs((r["t"] - alvo_n).total_seconds()) for r in runs]
@@ -255,7 +299,7 @@ def montar_html(itens, site, tz, url_repo, dias):
 
         cab = "".join(
             f'<th scope="col" class="{"alvo" if i == i_alvo else ""}">'
-            f'<a href="relatorios/{e(r["pdf"].name)}">{r["t"].astimezone(tz):%H:%M}</a>'
+            f'<a class="mono" href="relatorios/{e(r["pdf"].name)}">{r["t"].astimezone(tz):%H:%M}</a>'
             f'<span class="marca">{"alvo" if i == i_alvo else "&nbsp;"}</span></th>'
             for i, r in enumerate(runs))
 
@@ -271,7 +315,7 @@ def montar_html(itens, site, tz, url_repo, dias):
                     curto = str(n)
                     txt = f"nota {n} de 5"
                 hora = f'{r["t"].astimezone(tz):%H:%M}'
-                cels.append(f'<td class="{"alvo" if i == i_alvo else ""}"><a class="b {nivel_cor(n)}" '
+                cels.append(f'<td class="{"alvo" if i == i_alvo else ""}"><a class="b mono {nivel_cor(n)}" '
                             f'href="relatorios/{e(r["pdf"].name)}" title="{e(nome)}: {e(txt)} ({hora}). '
                             f'Abrir relatório" aria-label="{e(nome)}: {e(txt)}, {hora}. Abrir relatório">'
                             f'{e(curto)}</a></td>')
@@ -280,7 +324,7 @@ def montar_html(itens, site, tz, url_repo, dias):
 
         partes.append(f"""
 <section class="noite">
-  <h4>Noite de {nd:%d/%m} para {dia2:%d/%m}</h4>
+  <h4>Noite de <span class="mono">{nd:%d/%m}</span> para <span class="mono">{dia2:%d/%m}</span></h4>
   <div class="rolagem" tabindex="0" aria-label="Tabela da noite de {nd:%d/%m}; role para o lado para ver todos os horários">
   <table>
     <thead><tr><th scope="col" class="canto"><span class="sr">Item</span></th>{cab}</tr></thead>
@@ -305,136 +349,175 @@ def montar_html(itens, site, tz, url_repo, dias):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{e(titulo)}</title>
 <meta name="description" content="Previsão de transparência, seeing, chuva e orvalho para o Observatório {e(site)}, a partir de radiossonda e GOES-19.">
-<meta name="theme-color" content="#101B33">
+<meta name="theme-color" content="#080B12">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <style>
 :root {{
-  --fundo:#101B33; --painel:#1A2747; --texto:#E6EAF2; --sec:#9AA6BF; --linha:#2C3B63; --foco:#7FB2FF;
-  --n5:#0B3D91; --n4:#2F6BC2; --n3:#6E95CF; --n2:#AFC0DD; --n1:#D9DEE8; --vazio:#24335A;
-  --t5:#F2F5FA; --t4:#F2F5FA; --t3:#0E1A33; --t2:#0E1A33; --t1:#0E1A33;
-  --bom:#5FB98A; --meio:#E2B14A; --ruim:#E06C5F;
-  --hero-bom:#123331; --hero-meio:#2F2A1C; --hero-ruim:#33202B;
-  --alerta-fundo:#E06C5F; --alerta-texto:#1A0B0B;
+  --fundo:#080B12; --card:#111622; --borda:rgba(255,255,255,0.08); --borda-forte:rgba(255,255,255,0.16);
+  --texto:#E7ECF5; --sec:#8A94A8; --foco:#7CB3FF;
+  --n5:#1D4ED8; --n4:#3B82F6; --n3:#7FA8EA; --n2:#B9C7DF; --n1:#E3E8F0; --vazio:#1C2333;
+  --t5:#F5F8FF; --t4:#F5F8FF; --t3:#0A1020; --t2:#0A1020; --t1:#0A1020;
+  --bom:#34D399; --meio:#FBBF24; --ruim:#F87171;
+  --ambar:#F59E0B; --ambar-fundo:rgba(245,158,11,0.12); --ambar-texto:#FCD34D;
+  --mono:"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 }}
-html.vermelho {{
-  --fundo:#000000; --painel:#0E0000; --texto:#EF4444; --sec:#B91C1C; --linha:#3B0A0A; --foco:#F87171;
-  --n5:#EF4444; --n4:#C12A2A; --n3:#991B1B; --n2:#701414; --n1:#4A0D0D; --vazio:#160303;
-  --t5:#000000; --t4:#000000; --t3:#FCA5A5; --t2:#EF4444; --t1:#EF4444;
-  --bom:#EF4444; --meio:#991B1B; --ruim:#7F1D1D;
-  --hero-bom:#140303; --hero-meio:#100202; --hero-ruim:#0E0202;
-  --alerta-fundo:#7F1D1D; --alerta-texto:#FECACA;
+body.noturno {{
+  --fundo:#050000; --card:#0C0101; --borda:rgba(239,68,68,0.16); --borda-forte:rgba(239,68,68,0.32);
+  --texto:#EF4444; --sec:#991B1B; --foco:#EF4444;
+  --n5:#EF4444; --n4:#B91C1C; --n3:#7F1D1D; --n2:#4A0E0E; --n1:#2A0707; --vazio:#140202;
+  --t5:#050000; --t4:#050000; --t3:#EF4444; --t2:#EF4444; --t1:#EF4444;
+  --bom:#EF4444; --meio:#DC2626; --ruim:#B91C1C;
+  --ambar:#B91C1C; --ambar-fundo:rgba(185,28,28,0.14); --ambar-texto:#EF4444;
 }}
 * {{ box-sizing:border-box; }}
-html {{ background:var(--fundo); color:var(--texto); }}
-body {{ margin:0; font-family:"Atkinson Hyperlegible", system-ui, sans-serif; font-size:17px; line-height:1.5; }}
-main, header, footer {{ max-width:760px; margin:0 auto; padding:0 20px; }}
-:focus-visible {{ outline:3px solid var(--foco); outline-offset:2px; border-radius:4px; }}
+html {{ background:#080B12; scroll-behavior:smooth; }}
+body {{ margin:0; background:var(--fundo); color:var(--texto); font-family:Inter, system-ui, sans-serif;
+  font-size:16px; line-height:1.55; -webkit-font-smoothing:antialiased; transition:background .2s, color .2s; }}
+.mono {{ font-family:var(--mono); font-variant-numeric:tabular-nums; letter-spacing:-.01em; }}
+main, header, footer {{ max-width:900px; margin:0 auto; padding:0 20px; }}
+:focus-visible {{ outline:2px solid var(--foco); outline-offset:2px; border-radius:6px; }}
 .sr {{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }}
 .nb {{ white-space:nowrap; }}
 
 /* Cabeçalho */
-header {{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding-top:26px; flex-wrap:wrap; }}
-header > div {{ flex:1 1 300px; min-width:0; }}
-header h1 {{ font-size:1.05rem; font-weight:700; margin:0; letter-spacing:.01em; }}
-header p {{ margin:2px 0 0; color:var(--sec); font-size:.9rem; }}
-button.modo {{ flex:none; display:inline-flex; align-items:center; gap:8px; font:inherit; font-size:.85rem;
-  color:var(--texto); background:transparent; border:1px solid var(--linha); border-radius:999px; padding:6px 14px; cursor:pointer; }}
+header {{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px 16px; padding-top:24px; flex-wrap:wrap; }}
+header > div {{ flex:1 1 320px; min-width:0; }}
+header h1 {{ font-size:1rem; font-weight:600; margin:0; letter-spacing:-.005em; }}
+header p {{ margin:2px 0 0; color:var(--sec); font-size:.86rem; }}
+button.modo {{ flex:none; display:inline-flex; align-items:center; gap:8px; font:inherit; font-size:.84rem; font-weight:500;
+  color:var(--texto); background:var(--card); border:1px solid var(--borda-forte); border-radius:999px; padding:7px 14px; cursor:pointer; }}
+button.modo:hover {{ border-color:var(--texto); }}
 button.modo[aria-pressed="true"] {{ background:var(--texto); color:var(--fundo); border-color:var(--texto); }}
 
-/* Cartão principal */
-.hero {{ margin:26px 0 0; padding:24px 24px 22px; border-radius:16px; background:var(--painel);
-  border:1px solid var(--linha); }}
-.hero.bom {{ background:var(--hero-bom); border-color:color-mix(in srgb, var(--bom) 45%, transparent); }}
-.hero.meio {{ background:var(--hero-meio); border-color:color-mix(in srgb, var(--meio) 45%, transparent); }}
-.hero.ruim {{ background:var(--hero-ruim); border-color:color-mix(in srgb, var(--ruim) 45%, transparent); }}
-.meta {{ display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin:0 0 10px; color:var(--sec); font-size:.92rem; }}
-.selo {{ display:inline-block; padding:2px 10px; border-radius:999px; border:1px solid currentColor; font-size:.82rem; color:var(--texto); }}
-.selo.vencido {{ background:var(--alerta-fundo); border-color:var(--alerta-fundo); color:var(--alerta-texto); font-weight:700; }}
-.expirado {{ margin:0 0 14px; padding:10px 14px; border-radius:10px; background:var(--alerta-fundo);
-  color:var(--alerta-texto); font-weight:700; }}
-.hero h2 {{ font-size:clamp(2rem, 6.4vw, 3rem); line-height:1.08; margin:0 0 14px; letter-spacing:-.01em; }}
-.hero.vencida h2, .hero.vencida .motivos {{ opacity:.55; }}
-.motivos {{ margin:0 0 16px; padding-left:1.2em; }}
-.motivos li {{ margin:2px 0; }}
-.fonte {{ margin:0 0 18px; color:var(--sec); font-size:.9rem; max-width:62ch; }}
-.botao {{ display:inline-block; color:var(--fundo); background:var(--texto); text-decoration:none; font-weight:700;
-  padding:11px 18px; border-radius:10px; }}
+/* Banner de relatório vencido */
+.banner-expirado {{ display:flex; gap:12px; align-items:flex-start; margin:20px 0 0; padding:12px 16px; border-radius:12px;
+  background:var(--ambar-fundo); border:1px solid var(--ambar); color:var(--ambar-texto); font-weight:600; }}
+.banner-expirado[hidden] {{ display:none; }}
+.banner-expirado svg {{ flex:none; margin-top:2px; }}
+.banner-expirado p {{ margin:0; }}
 
-/* Grupos de cartões */
-h3 {{ font-size:1rem; margin:30px 0 10px; }}
+/* Painel de decisão */
+.decisao {{ --cor:var(--meio); display:grid; grid-template-columns:minmax(0, 1fr) 280px; margin:20px 0 0;
+  background:var(--card); border:1px solid var(--borda); border-radius:18px; overflow:hidden; position:relative; }}
+.decisao::before {{ content:""; position:absolute; inset:0 0 auto 0; height:3px; background:var(--cor); }}
+.decisao.bom {{ --cor:var(--bom); }} .decisao.meio {{ --cor:var(--meio); }} .decisao.ruim {{ --cor:var(--ruim); }}
+.decisao-principal {{ padding:26px 26px 24px; }}
+.meta {{ display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin:0 0 18px; color:var(--sec); font-size:.86rem; }}
+.selo {{ display:inline-block; padding:2px 10px; border-radius:999px; border:1px solid var(--borda-forte); color:var(--texto); font-size:.78rem; }}
+.selo.vencido {{ border-color:var(--ambar); color:var(--ambar-texto); background:var(--ambar-fundo); }}
+.status {{ display:flex; align-items:center; gap:8px; margin:0 0 6px; color:var(--cor); font-size:.86rem; font-weight:600; }}
+.led-status {{ width:10px; height:10px; border-radius:50%; background:var(--cor); box-shadow:0 0 0 4px color-mix(in srgb, var(--cor) 22%, transparent); }}
+.decisao h2 {{ font-size:clamp(2rem, 5.6vw, 3.1rem); line-height:1.04; font-weight:800; letter-spacing:-.025em; margin:0 0 16px; }}
+.decisao.vencida h2, .decisao.vencida .motivos {{ opacity:.5; }}
+.motivos {{ list-style:none; margin:0 0 18px; padding:0; display:grid; gap:6px; }}
+.motivos li {{ position:relative; padding-left:18px; }}
+.motivos li::before {{ content:""; position:absolute; left:2px; top:.62em; width:7px; height:7px; border-radius:2px; background:var(--cor); }}
+.fonte {{ margin:0 0 18px; color:var(--sec); font-size:.86rem; max-width:62ch; }}
+.botao {{ display:inline-block; color:var(--fundo); background:var(--texto); text-decoration:none; font-weight:600;
+  padding:11px 18px; border-radius:10px; }}
+.botao:hover {{ opacity:.9; }}
+.equipamento {{ padding:26px 22px 22px; border-left:1px solid var(--borda); background:color-mix(in srgb, var(--cor) 6%, transparent); }}
+.eq-rot {{ margin:0 0 10px; color:var(--sec); font-size:.8rem; }}
+.eq-icone {{ width:58px; height:58px; display:grid; place-items:center; border-radius:14px; color:var(--cor);
+  border:1px solid color-mix(in srgb, var(--cor) 40%, transparent); background:color-mix(in srgb, var(--cor) 10%, transparent); }}
+.eq-nome {{ margin:12px 0 2px; font-weight:700; font-size:1.05rem; }}
+.eq-txt {{ margin:0 0 16px; color:var(--sec); font-size:.84rem; }}
+.chips {{ list-style:none; margin:0; padding:12px 0 0; border-top:1px solid var(--borda); display:grid; gap:8px; font-size:.84rem; }}
+.chips li {{ display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:8px; }}
+.chip-nome {{ color:var(--sec); }} .chip-val {{ font-weight:600; }}
+
+/* Cartões de métricas */
+h3 {{ font-size:.95rem; font-weight:600; margin:32px 0 10px; }}
 .cards {{ display:grid; gap:10px; }}
-.cards.c4 {{ grid-template-columns:repeat(4, 1fr); }}
-.cards.c3 {{ grid-template-columns:repeat(3, 1fr); }}
-.card {{ background:var(--painel); border:1px solid var(--linha); border-radius:12px; padding:12px 14px; min-width:0; }}
-.card .rot {{ margin:0; color:var(--sec); font-size:.85rem; }}
-.card .valor {{ margin:2px 0 6px; font-weight:700; font-size:1.05rem; display:flex; align-items:center; gap:8px; }}
-.card .rodape {{ margin:4px 0 0; color:var(--sec); font-size:.76rem; }}
-.ponto {{ width:10px; height:10px; border-radius:50%; flex:none; }}
-.barra {{ display:flex; gap:3px; }}
-.barra .c {{ flex:1; height:8px; border-radius:2px; }}
-.lua {{ flex:none; }} .lua-sombra {{ fill:var(--vazio); }} .lua-luz {{ fill:var(--texto); }}
+.cards.c4 {{ grid-template-columns:repeat(4, minmax(0, 1fr)); }}
+.cards.c3 {{ grid-template-columns:repeat(3, minmax(0, 1fr)); }}
+.card {{ background:var(--card); border:1px solid var(--borda); border-radius:14px; padding:14px 16px; min-width:0; }}
+.card .rot {{ margin:0 0 8px; color:var(--sec); font-size:.82rem; }}
+.valor-linha {{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }}
+.card-lua .valor-linha {{ justify-content:flex-start; }}
+.valor {{ margin:0; font-weight:700; font-size:1.08rem; display:flex; align-items:center; gap:8px; }}
+.valor.mono {{ font-size:1.5rem; line-height:1; }}
+.valor .de {{ font-size:.8rem; font-weight:500; color:var(--sec); font-family:Inter, system-ui, sans-serif; }}
+.card .rodape {{ margin:10px 0 0; color:var(--sec); font-size:.76rem; }}
+.medidor {{ display:inline-flex; gap:3px; }}
+.medidor span {{ width:10px; height:22px; border-radius:3px; }}
+.led {{ width:9px; height:9px; border-radius:50%; flex:none; }}
+.lua {{ flex:none; }} .lua-sombra {{ fill:var(--vazio); stroke:var(--borda-forte); stroke-width:1; }} .lua-luz {{ fill:var(--texto); }}
 
 /* Escala de cores */
-.c {{ display:inline-block; border-radius:3px; }}
 .n5 {{ background:var(--n5); }} .n4 {{ background:var(--n4); }} .n3 {{ background:var(--n3); }}
 .n2 {{ background:var(--n2); }} .n1 {{ background:var(--n1); }} .vazio {{ background:var(--vazio); }}
-.escala {{ list-style:none; margin:0 0 8px; padding:0; display:flex; flex-wrap:wrap; gap:6px 16px; color:var(--sec); font-size:.88rem; }}
+body.noturno .n1, body.noturno .n2, body.noturno .vazio {{ box-shadow:inset 0 0 0 1px rgba(239,68,68,.22); }}
+.escala {{ list-style:none; margin:0 0 10px; padding:0; display:flex; flex-wrap:wrap; gap:6px 16px; color:var(--sec); font-size:.84rem; }}
 .escala li {{ display:inline-flex; align-items:center; gap:7px; white-space:nowrap; }}
-.escala .c {{ width:20px; height:14px; }}
-details {{ color:var(--sec); font-size:.9rem; }}
-summary {{ display:inline-flex; align-items:center; gap:8px; cursor:pointer; color:var(--texto); padding:4px 0; list-style:none; }}
+.sw {{ width:18px; height:12px; border-radius:3px; display:inline-block; }}
+details {{ color:var(--sec); font-size:.88rem; background:var(--card); border:1px solid var(--borda); border-radius:12px; }}
+summary {{ display:flex; align-items:center; gap:8px; cursor:pointer; color:var(--texto); padding:10px 14px; list-style:none; font-weight:500; }}
 summary::-webkit-details-marker {{ display:none; }}
-summary::after {{ content:"+"; color:var(--sec); }}
+summary::after {{ content:"+"; margin-left:auto; color:var(--sec); font-family:var(--mono); }}
 details[open] summary::after {{ content:"−"; }}
-.explica {{ max-width:64ch; padding:4px 0 2px 26px; }}
+.explica {{ max-width:68ch; padding:0 16px 12px 40px; }}
 .explica p {{ margin:6px 0; }} .explica ul {{ margin:4px 0 8px; padding-left:1.1em; }}
+.explica strong {{ color:var(--texto); font-weight:600; }}
 
-/* Tabelas das noites */
-h4 {{ font-size:.98rem; margin:26px 0 8px; }}
-.rolagem {{ overflow-x:auto;
+/* Matriz horária */
+h4 {{ font-size:.9rem; font-weight:600; margin:26px 0 8px; }}
+.rolagem {{ overflow-x:auto; scroll-behavior:smooth; -webkit-overflow-scrolling:touch; scrollbar-width:thin;
   background: linear-gradient(to right, var(--fundo) 30%, transparent) left / 40px 100% no-repeat local,
               linear-gradient(to left, var(--fundo) 30%, transparent) right / 40px 100% no-repeat local,
-              linear-gradient(to right, rgba(0,0,0,.45), transparent) left / 14px 100% no-repeat scroll,
-              linear-gradient(to left, rgba(0,0,0,.45), transparent) right / 14px 100% no-repeat scroll; }}
-table {{ border-collapse:separate; border-spacing:4px 4px; font-size:.82rem; }}
+              linear-gradient(to right, rgba(0,0,0,.6), transparent) left / 14px 100% no-repeat scroll,
+              linear-gradient(to left, rgba(0,0,0,.6), transparent) right / 14px 100% no-repeat scroll; }}
+table {{ border-collapse:separate; border-spacing:4px 4px; font-size:.8rem; }}
 th {{ font-weight:400; color:var(--sec); text-align:left; white-space:nowrap; }}
-tbody th, thead th.canto {{ position:sticky; left:0; z-index:1; background:var(--fundo); padding-right:12px; }}
-thead th {{ text-align:center; padding:0 2px 2px; vertical-align:top; min-width:42px; }}
-thead a {{ color:var(--sec); text-decoration:none; }}
+tbody th, thead th.canto {{ position:sticky; left:0; z-index:2; background:var(--fundo); padding-right:12px; }}
+tbody th {{ color:var(--texto); font-weight:500; }}
+thead th {{ text-align:center; padding:0 0 2px; vertical-align:top; min-width:44px; }}
+thead a {{ color:var(--sec); text-decoration:none; font-size:.76rem; }}
 thead th.alvo a {{ color:var(--texto); font-weight:700; }}
-.marca {{ display:block; font-size:.66rem; line-height:1.1; color:var(--texto); }}
-td {{ padding:0; }}
-td.alvo a.b {{ box-shadow:0 0 0 2px var(--texto); }}
-a.b {{ display:flex; align-items:center; justify-content:center; width:42px; height:28px; border-radius:4px;
-  text-decoration:none; font-weight:700; font-size:.78rem; cursor:pointer; transition:transform .12s ease; }}
+.marca {{ display:block; font-size:.64rem; line-height:1.1; color:var(--cor-alvo, var(--texto)); }}
+td {{ padding:0; position:relative; }}
+td.alvo::before {{ content:""; position:absolute; inset:-3px -2px; border-left:1px solid var(--borda-forte);
+  border-right:1px solid var(--borda-forte); background:rgba(255,255,255,.05); pointer-events:none; }}
+body.noturno td.alvo::before {{ background:rgba(239,68,68,.06); }}
+tr:first-child td.alvo::before {{ border-top:1px solid var(--borda-forte); border-radius:6px 6px 0 0; }}
+tr:last-child td.alvo::before {{ border-bottom:1px solid var(--borda-forte); border-radius:0 0 6px 6px; }}
+a.b {{ position:relative; display:flex; align-items:center; justify-content:center; width:44px; height:30px; border-radius:6px;
+  text-decoration:none; font-weight:700; font-size:.76rem; cursor:pointer; transition:transform .12s ease, box-shadow .12s ease; }}
 a.b:hover {{ transform:translateY(-1px); box-shadow:0 0 0 2px var(--foco); }}
 a.b.n5 {{ color:var(--t5); }} a.b.n4 {{ color:var(--t4); }} a.b.n3 {{ color:var(--t3); }}
 a.b.n2 {{ color:var(--t2); }} a.b.n1 {{ color:var(--t1); }}
-th .dica {{ display:block; font-size:.72rem; color:var(--sec); opacity:.85; }}
+th .dica {{ display:block; font-size:.7rem; color:var(--sec); font-weight:400; }}
 
-footer {{ color:var(--sec); font-size:.85rem; padding-top:40px; padding-bottom:40px; }}
-footer p {{ max-width:64ch; }}
+footer {{ color:var(--sec); font-size:.82rem; padding-top:40px; padding-bottom:40px; }}
+footer p {{ max-width:68ch; }}
 footer a {{ color:var(--texto); }}
 
-@media (max-width:640px) {{
-  .cards.c4 {{ grid-template-columns:repeat(2, 1fr); }}
-  .cards.c3 {{ grid-template-columns:repeat(2, 1fr); }}
+@media (max-width:720px) {{
+  .decisao {{ grid-template-columns:1fr; }}
+  .equipamento {{ border-left:0; border-top:1px solid var(--borda); display:grid; grid-template-columns:58px 1fr;
+    column-gap:14px; align-items:center; }}
+  .eq-rot {{ grid-column:1 / -1; }} .eq-icone {{ grid-row:span 2; }} .eq-nome {{ margin-top:0; }} .eq-txt {{ margin-bottom:0; }}
+  .chips {{ grid-column:1 / -1; margin-top:14px; }}
+  .cards.c4 {{ grid-template-columns:repeat(2, minmax(0, 1fr)); }}
+  .cards.c3 {{ grid-template-columns:repeat(2, minmax(0, 1fr)); }}
   .cards.c3 .card:last-child {{ grid-column:1 / -1; }}
-  .hero {{ padding:20px 18px; }}
-  table {{ border-spacing:3px; font-size:.74rem; }}
-  a.b {{ width:34px; height:26px; font-size:.7rem; }}
-  thead th {{ min-width:34px; }}
-  th .dica {{ font-size:.64rem; }}
 }}
-@media (prefers-reduced-motion:reduce) {{ a.b {{ transition:none; }} a.b:hover {{ transform:none; }} }}
+@media (max-width:480px) {{
+  .decisao-principal {{ padding:22px 18px 20px; }} .equipamento {{ padding:18px; }}
+  table {{ border-spacing:3px; font-size:.72rem; }}
+  a.b {{ width:36px; height:28px; font-size:.68rem; }} thead th {{ min-width:36px; }}
+  thead a {{ font-size:.68rem; }} th .dica {{ font-size:.62rem; }}
+}}
+@media (prefers-reduced-motion:reduce) {{ * {{ transition:none !important; scroll-behavior:auto !important; }}
+  a.b:hover {{ transform:none; }} }}
 </style>
-<script>
-try {{ if (localStorage.getItem("modoVermelho") === "1") document.documentElement.classList.add("vermelho"); }} catch (e) {{}}
-</script>
 </head>
 <body>
+<script>
+try {{ if (localStorage.getItem("modoVermelho") === "1") document.body.classList.add("noturno"); }} catch (e) {{}}
+</script>
 <header>
   <div>
     <h1>{e(titulo)}</h1>
@@ -444,39 +527,34 @@ try {{ if (localStorage.getItem("modoVermelho") === "1") document.documentElemen
           title="Cores vermelhas para preservar a visão no escuro">{ICONE_OLHO}<span>Modo noturno</span></button>
 </header>
 <main>
+{banner}
 {''.join(partes)}
 </main>
 <footer>
   <p>As notas são estimativas automáticas feitas por regras heurísticas, ainda em fase experimental.
   Antes de subir a serra, confira também o céu no satélite e as condições locais.</p>
-  <p>Relatórios dos últimos {dias} dias. Página gerada às {gerado:%H:%M} de {gerado:%d/%m/%Y}.
+  <p>Relatórios dos últimos {dias} dias. Página gerada às <span class="mono">{gerado:%H:%M}</span> de
+  <span class="mono">{gerado:%d/%m/%Y}</span>, {e(tz_nome)}.
   {f'Código-fonte e documentação: <a href="{e(url_repo)}">{e(url_repo)}</a> (GPL-3.0).' if url_repo else ''}</p>
 </footer>
 <script>
 (function () {{
-  var h = document.documentElement, b = document.getElementById("modo");
-  function sync() {{ var on = h.classList.contains("vermelho"); b.setAttribute("aria-pressed", on ? "true" : "false");
-    b.title = on ? "Voltar às cores normais" : "Cores vermelhas para preservar a visão no escuro"; }}
-  b.addEventListener("click", function () {{ h.classList.toggle("vermelho");
-    try {{ localStorage.setItem("modoVermelho", h.classList.contains("vermelho") ? "1" : "0"); }} catch (e) {{}}
+  var c = document.body, b = document.getElementById("modo");
+  function sync() {{ var on = c.classList.contains("noturno"); b.setAttribute("aria-pressed", on ? "true" : "false");
+    b.title = on ? "Voltar às cores normais" : "Cores vermelhas para preservar a visão no escuro";
+    var m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = on ? "#050000" : "#080B12"; }}
+  b.addEventListener("click", function () {{ c.classList.toggle("noturno");
+    try {{ localStorage.setItem("modoVermelho", c.classList.contains("noturno") ? "1" : "0"); }} catch (e) {{}}
     sync(); }});
   sync();
 
-  // Validade: selo vira alerta quando o relatório vence
-  var selo = document.querySelector(".selo"), alerta = document.querySelector(".expirado"),
-      hero = document.querySelector(".hero");
+  // Validade: banner âmbar no topo e selo "vencido" quando o relatório passa da validade
+  var selo = document.querySelector(".selo"), banner = document.querySelector(".banner-expirado"),
+      dec = document.querySelector(".decisao");
   if (selo && new Date(selo.getAttribute("data-ate")) < new Date()) {{
     selo.classList.add("vencido"); selo.textContent = "vencido às " + selo.getAttribute("data-hora");
-    if (alerta) alerta.hidden = false;
-    if (hero) hero.classList.add("vencida");
-  }}
-
-  // "Como ler": aberto só na primeira visita
-  var det = document.getElementById("como-ler");
-  if (det) {{
-    try {{
-      if (!localStorage.getItem("comoLerVisto")) {{ det.open = true; localStorage.setItem("comoLerVisto", "1"); }}
-    }} catch (e) {{}}
+    if (banner) banner.hidden = false;
+    if (dec) dec.classList.add("vencida");
   }}
 }})();
 </script>
@@ -493,6 +571,7 @@ def main():
     ap.add_argument("--dias", type=int, default=7)
     ap.add_argument("--tz", default="America/Sao_Paulo")
     ap.add_argument("--url-repo", default="")
+    ap.add_argument("--tz-nome", default="horário de Brasília (UTC−3)", help="como o fuso aparece na página")
     args = ap.parse_args()
 
     tz = ZoneInfo(args.tz)
@@ -505,7 +584,7 @@ def main():
         shutil.copy2(it["pdf"], args.saida / "relatorios" / it["pdf"].name)
     if itens:
         shutil.copy2(itens[-1]["pdf"], args.saida / "relatorios" / "ultimo.pdf")
-    (args.saida / "index.html").write_text(montar_html(itens, args.site, tz, args.url_repo, args.dias),
+    (args.saida / "index.html").write_text(montar_html(itens, args.site, tz, args.url_repo, args.dias, args.tz_nome),
                                            encoding="utf-8")
     (args.saida / ".nojekyll").write_text("")
     print(f"Página gerada em {args.saida} com {len(itens)} relatório(s).")
