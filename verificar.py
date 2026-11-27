@@ -7,7 +7,7 @@ verificar.py — Confere as previsões com o que de fato aconteceu.
 Passo 1 (automático): para cada relatório final (<SITE>_<AAAAMMDD>T<HHMM>Z.json), olha as
 imagens do GOES-19 na janela de observação (do horário-alvo até N horas depois), mede a
 fração de céu claro e de cirrus num raio de 25 km do observatório e converte numa
-"transparência observada" de 1 a 5, com a mesma fórmula da nota do satélite.
+"transparência observada" de 1 a 10, com a mesma fórmula da nota do satélite.
 
 Passo 2 (opcional): se existir o registro manual (registro_observacoes.csv), compara também
 transparência e seeing previstos com o que os observadores anotaram.
@@ -61,8 +61,13 @@ def frame_stats(folder: Path, lat, lon, tsfc_k, cfg):
 
 
 def nota_observada(claro, cirrus, cfg):
-    sc = 1 + 4 * claro - cfg["nota"]["penal_cirrus"] * cirrus
-    return int(max(1, min(5, math.floor(sc + 0.5)))), sc
+    sc = 1 + 9 * claro - cfg["nota"]["penal_cirrus"] * cirrus
+    return int(max(1, min(10, math.floor(sc + 0.5)))), sc
+
+
+def para10(x):
+    """Converte uma nota da escala 1–5 para 1–10 (relatórios antigos e registro manual)."""
+    return None if x is None or x == "" else round(1 + (float(x) - 1) * 2.25, 1)
 
 
 # --------------------------------------------------------------------------
@@ -119,28 +124,31 @@ def ler_registro(path: Path | None):
 # Métricas
 # --------------------------------------------------------------------------
 def metricas(pares):
-    """pares: lista de (previsto, observado) inteiros/float 1–5."""
+    """pares: lista de (previsto, observado), escala 1–10."""
     if not pares:
         return None
     err = [p - o for p, o in pares]
     n = len(pares)
     return dict(n=n, vies=sum(err) / n, mae=sum(abs(e) for e in err) / n,
                 exato=sum(1 for p, o in pares if round(p) == round(o)) / n,
-                pm1=sum(1 for e in err if abs(e) <= 1) / n)
+                pm1=sum(1 for e in err if abs(e) <= 1) / n,
+                pm2=sum(1 for e in err if abs(e) <= 2) / n)
 
 
 def matriz(pares):
     c = Counter((int(round(p)), int(round(o))) for p, o in pares)
-    linhas = ["| previsto \\ observado | 1 | 2 | 3 | 4 | 5 |", "|---|---|---|---|---|---|"]
-    for p in range(5, 0, -1):
-        linhas.append(f"| **{p}** | " + " | ".join(str(c.get((p, o), "")) or "" for o in range(1, 6)) + " |")
+    linhas = ["| previsto \\ observado | " + " | ".join(str(o) for o in range(1, 11)) + " |",
+              "|---" * 11 + "|"]
+    for p in range(10, 0, -1):
+        linhas.append(f"| **{p}** | " + " | ".join(str(c.get((p, o), "")) for o in range(1, 11)) + " |")
     return "\n".join(linhas)
 
 
 def fmt_m(m):
     if not m:
-        return "| — | — | — | — | — |"
-    return f"| {m['n']} | {m['vies']:+.2f} | {m['mae']:.2f} | {m['exato']:.0%} | {m['pm1']:.0%} |"
+        return "| — | — | — | — | — | — |"
+    return (f"| {m['n']} | {m['vies']:+.2f} | {m['mae']:.2f} | {m['exato']:.0%} | {m['pm1']:.0%} | "
+            f"{m['pm2']:.0%} |")
 
 
 # --------------------------------------------------------------------------
@@ -239,6 +247,10 @@ def main():
         cirrus = sum(o["cirrus25"] for o in obs) / len(obs)
         t_obs, t_obs_bruto = nota_observada(claro, cirrus, cfg)
         det = d.get("transparencia_detalhe") or {}
+        if d.get("escala_notas") != 10:  # relatório antigo, escala 1–5
+            d = dict(d, transparencia=para10(d["transparencia"]), seeing=para10(d.get("seeing")))
+            det = {k: (para10(v) if k in ("sondagem", "satelite", "nota") and v not in ("", None) else v)
+                   for k, v in det.items()}
         noite = (alvo.astimezone(tz) - timedelta(hours=12)).date()
         reg = registro.get(noite) or {}
         linhas.append(dict(
@@ -249,8 +261,10 @@ def main():
             seeing=d.get("seeing"), chuva=d.get("chuva"), orvalho=d.get("orvalho"), montar=d.get("montar"),
             obs_quadros=len(obs), obs_claro_25km=round(claro, 3), obs_cirrus_25km=round(cirrus, 3),
             obs_transp_sat=t_obs, obs_transp_sat_bruto=round(t_obs_bruto, 2),
-            reg_transparencia="" if reg.get("transparencia") is None else round(reg["transparencia"], 1),
-            reg_seeing="" if reg.get("seeing") is None else round(reg["seeing"], 1),
+            # registro manual é de 1 a 5 (escala dos observadores); convertido para 1–10
+            reg_transparencia="" if reg.get("transparencia") is None else para10(reg["transparencia"]),
+            reg_seeing="" if reg.get("seeing") is None else para10(reg["seeing"]),
+            seeing_arcsec=d.get("seeing_arcsec", ""), reg_fwhm_arcsec="" if reg.get("fwhm") is None else reg["fwhm"],
             reg_nuvens_pct="" if reg.get("nuvens_pct") is None else round(reg["nuvens_pct"]),
             reg_sqm="" if reg.get("sqm") is None else round(reg["sqm"], 2),
             reg_observadores=reg.get("observadores", ""),
@@ -280,11 +294,12 @@ def main():
           f"{pendentes} aguardando o fim da janela de observação. Janela: do horário-alvo até "
           f"{args.janela_h:g} h depois; observado = céu claro e cirrus em 25 km pelo GOES-19.",
           "",
-          "Viés positivo = previsão mais otimista que o observado. ±1 = acertou com até 1 ponto de diferença.",
+          "Notas na escala de 1 a 10 (relatórios antigos e o registro manual, de 1 a 5, são convertidos). "
+          "Viés positivo = previsão mais otimista que o observado. ±1 / ±2 = acertou com até 1 / 2 pontos de diferença.",
           "",
           "## Transparência prevista × observada pelo satélite",
           "",
-          "| Nota avaliada | n | viés | erro médio | exato | ±1 |", "|---|---|---|---|---|---|"]
+          "| Nota avaliada | n | viés | erro médio | exato | ±1 | ±2 |", "|---|---|---|---|---|---|---|"]
     sem_sat = lambda r: r["peso_sat"] < 0.5  # noqa: E731
     for nome, chave, filt in [("Final (todas)", "transp_final", lambda r: True),
                               ("Final, satélite com peso < 50%", "transp_final", sem_sat),
@@ -293,7 +308,7 @@ def main():
     md += ["", "A linha \"satélite com peso < 50%\" é a mais honesta para avaliar a previsão: quando o "
            "satélite pesa muito, a nota final já é quase uma observação.", "",
            "### Por antecedência (nota só da sondagem)", "",
-           "| Antecedência | n | viés | erro médio | exato | ±1 |", "|---|---|---|---|---|---|"]
+           "| Antecedência | n | viés | erro médio | exato | ±1 | ±2 |", "|---|---|---|---|---|---|---|"]
     for nome, lo, hi in [("até 2 h", -99, 2), ("2–6 h", 2, 6), ("6–12 h", 6, 12), ("mais de 12 h", 12, 999)]:
         md.append(f"| {nome} " + fmt_m(metricas(pares("transp_sondagem", "obs_transp_sat",
                                                       lambda r, lo=lo, hi=hi: lo < r["antecedencia_h"] <= hi))))
@@ -305,11 +320,18 @@ def main():
     pt = pares("transp_final", "reg_transparencia")
     ps = pares("seeing", "reg_seeing")
     if pt or ps:
-        md += ["| Comparação | n | viés | erro médio | exato | ±1 |", "|---|---|---|---|---|---|",
+        md += ["| Comparação | n | viés | erro médio | exato | ±1 | ±2 |", "|---|---|---|---|---|---|---|",
                "| Transparência final × registro " + fmt_m(metricas(pt)),
                "| Seeing × registro " + fmt_m(metricas(ps)),
                "| Transparência observada pelo satélite × registro " +
                fmt_m(metricas(pares("obs_transp_sat", "reg_transparencia")))]
+        pf = [(float(r["seeing_arcsec"]), float(r["reg_fwhm_arcsec"])) for r in linhas
+              if r.get("seeing_arcsec") not in ("", None) and r.get("reg_fwhm_arcsec") not in ("", None)]
+        if pf:
+            vies = sum(a - b for a, b in pf) / len(pf)
+            md += ["", f"Seeing estimado × FWHM medido pelos observadores: {len(pf)} noite(s), diferença média "
+                   f"{vies:+.2f}\" (negativo = estimativa mais otimista que o FWHM real, o esperado, porque o "
+                   "cálculo não inclui a camada junto ao solo nem o telescópio)."]
         md += ["", "A última linha mostra o quanto a \"observação\" do satélite concorda com quem estava lá; "
                "se concordar pouco, a calibração deve se apoiar mais no registro manual."]
     else:

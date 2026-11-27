@@ -67,12 +67,13 @@ DEFAULTS = {
         "horizontes_h": [0.5, 1.0, 1.5, 2.0, 3.0],
         "desloc_max_kmh": 120.0,
         "pico_min_correlacao": 0.05,
+        "idade_max_quadros_h": 3.0,    # quadros usados: até isto antes do mais recente válido
         "dispersao_max_frac": 0.5,     # pares de quadros devem concordar (fração da velocidade)
         "dif_dir_vento_max": 45.0,     # graus: coerência com o vento da sondagem
     },
-    "nota": {
+    "nota": {                      # transparência pelo satélite, escala 1–10
         "peso_agora": 0.5,
-        "penal_cirrus": 1.0,
+        "penal_cirrus": 2.25,
     },
 }
 
@@ -699,18 +700,26 @@ def main():
         prods = [p for p in prods if p[0] <= lim]
     if not prods:
         sys.exit(f"Nenhum produto com product.cbor em {args.root}")
-    prods = prods[-args.frames:]
+    candidatos = prods[-args.frames * 4:]  # procura para trás até achar N quadros completos
 
     snd = json.loads(args.sounding_json.read_text()) if args.sounding_json else {}
     tsfc_k = (snd["sfc_t_c"] + 273.15) if snd.get("sfc_t_c") is not None else None
 
-    frames, results = [], []
-    for t, d in prods:
+    frames, results, ignorados = [], [], []
+    validos = []
+    for t, d in reversed(candidatos):
+        if len(validos) >= args.frames:
+            break
+        if validos and (validos[0].time - t).total_seconds() / 3600 > cfg["analise"]["idade_max_quadros_h"]:
+            break
         try:
             fr = Frame(d, args.lat, args.lon, cfg["analise"]["janela_km"], cfg)
         except Exception as e:  # noqa: BLE001
             print(f"aviso: ignorando {d.name}: {e}", file=sys.stderr)
+            ignorados.append(dict(pasta=d.name, motivo=str(e)))
             continue
+        validos.append(fr)
+    for fr in reversed(validos):
         sun = solar_elevation(fr.time, args.lat, args.lon)
         cls, info = classify(fr, sun, tsfc_k, cfg)
         r = {"tempo": fr.time.isoformat(), "elev_sol": round(sun, 1), **{k: (round(v, 2) if isinstance(v, float) else v)
@@ -730,7 +739,10 @@ def main():
     last = results[-1]
     res = dict(site=args.site, lat=args.lat, lon=args.lon, raios_km=cfg["analise"]["raios_km"],
                ultimo_quadro=last["tempo"], quadros=results,
-               km_por_pixel=round(fr.km_per_px, 2), raiz=str(args.root))
+               km_por_pixel=round(fr.km_per_px, 2), raiz=str(args.root),
+               ignorados=ignorados, pasta_mais_recente=prods[-1][1].name)
+    if not args.ate:
+        res["atraso_h"] = round((datetime.now(timezone.utc) - fr.time).total_seconds() / 3600, 2)
 
     # Tendência da fração nublada em 50 km
     if len(results) >= 2:
@@ -767,8 +779,9 @@ def main():
         fut = float(np.mean(vals)) if vals else None
     w0 = cfg["nota"]["peso_agora"]
     cf_eff = c0 if fut is None else w0 * c0 + (1 - w0) * fut
-    score = 1 + 4 * cf_eff - cfg["nota"]["penal_cirrus"] * last["r25"]["cirrus fino"]
-    res["transparencia_sat"] = dict(nota=int(max(1, min(5, math.floor(score + 0.5)))), bruto=round(score, 2),
+    score = 1 + 9 * cf_eff - cfg["nota"]["penal_cirrus"] * last["r25"]["cirrus fino"]
+    res["escala"] = 10
+    res["transparencia_sat"] = dict(nota=int(max(1, min(10, math.floor(score + 0.5)))), bruto=round(score, 2),
                                     claro_agora_25km=round(c0, 2),
                                     claro_previsto_2h=None if fut is None else round(fut, 2))
     res["validade_h"] = 3
@@ -797,7 +810,7 @@ def main():
         r = it["r25"] if p in ("ACHA", "ACHT", "LST") else it["r50"]
         med = "—" if r["mediana"] is None else f"{r['mediana']:.0f} {it['unidade']}"
         print(f"  L2 {p} ({it['tempo'][11:16]}Z): mediana {med}, válidos {r['validos']:.0%}")
-    print(f"  Transparência (satélite): {res['transparencia_sat']['nota']}/5")
+    print(f"  Transparência (satélite): {res['transparencia_sat']['nota']}/10")
     print(f"  JSON: {args.json}  PNG: {args.png}")
 
 

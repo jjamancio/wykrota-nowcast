@@ -62,6 +62,22 @@ def noite_de(t_local: datetime):
     return (t_local - timedelta(hours=12)).date()
 
 
+def nota10(d, chave):
+    """Nota de transparência/seeing na escala 1–10 (converte relatórios antigos, de 1 a 5)."""
+    v = d.get(chave)
+    if v in (None, ""):
+        return 1
+    v = float(v)
+    if d.get("escala_notas") != 10:
+        v = 1 + (v - 1) * 2.25
+    return int(max(1, min(10, round(v))))
+
+
+def cor10(n):
+    """Cor da escala (5 tons) para uma nota de 1 a 10."""
+    return nivel_cor(math.ceil(n / 2))
+
+
 def nivel_cor(n):
     return f"n{max(1, min(5, int(n)))}"
 
@@ -93,23 +109,23 @@ def icone_lua(frac: float, crescente: bool, r=11):
 
 def motivos(d):
     """Até três motivos curtos para o veredito, a partir do JSON do relatório."""
-    T, S = int(d.get("transparencia", 1)), int(d.get("seeing", 1))
+    T, S = nota10(d, "transparencia"), nota10(d, "seeing")
     chuva, orvalho = d.get("chuva"), d.get("orvalho")
     lua = d.get("lua_iluminada", 0)
     neg, pos = [], []
-    if T <= 2:
+    if T <= 4:
         neg.append("Transparência baixa: nuvens ou muita umidade")
-    elif T >= 4:
+    elif T >= 8:
         pos.append("Céu transparente")
     if chuva == "alto":
         neg.append("Risco alto de chuva ou trovoada")
     elif chuva == "moderado":
         neg.append("Risco moderado de chuva")
-    if S <= 2:
+    if S <= 4:
         neg.append("Seeing ruim: imagem tremida em alta ampliação")
-    elif S >= 4:
+    elif S >= 8:
         pos.append("Seeing bom para alta ampliação")
-    if lua >= 0.6 and T >= 3:
+    if lua >= 0.6 and T >= 6:
         neg.append(f"Lua {round(100 * lua)}% iluminada atrapalha o céu profundo")
     if orvalho in ("alto", "muito alto"):
         neg.append(f"Orvalho {orvalho}: use aquecedores nas ópticas")
@@ -203,27 +219,29 @@ def montar_html(itens, site, tz, url_repo, dias, tz_nome="horário de Brasília 
 </section>""")
 
         def medidor(n):
-            seg = "".join(f'<span class="{nivel_cor(n) if i < n else "vazio"}"></span>' for i in range(5))
-            return f'<span class="medidor" role="img" aria-label="{n} de 5">{seg}</span>'
+            seg = "".join(f'<span class="{cor10(n) if i < n else "vazio"}"></span>' for i in range(10))
+            return f'<span class="medidor m10" role="img" aria-label="{n} de 10">{seg}</span>'
 
         def card(rot, valor_html, rodape="", extra_cls=""):
             return (f'<div class="card {extra_cls}"><p class="rot">{rot}</p>{valor_html}'
                     f'{f"<p class=rodape>{rodape}</p>" if rodape else ""}</div>')
 
         def nota(n):
-            return (f'<div class="valor-linha"><p class="valor mono">{n}<span class="de"> de 5</span></p>'
+            return (f'<div class="valor-linha"><p class="valor mono">{n}<span class="de"> de 10</span></p>'
                     f'{medidor(n)}</div>')
 
         def risco(txt, nivel):
             return (f'<div class="valor-linha"><p class="valor"><span class="led {nivel_cor(nivel)}" '
                     f'aria-hidden="true"></span>risco {e(txt)}</p></div>')
 
-        T, S = int(d.get("transparencia", 1)), int(d.get("seeing", 1))
+        T, S = nota10(d, "transparencia"), nota10(d, "seeing")
         chuva, orvalho = str(d.get("chuva", "—")), str(d.get("orvalho", "—"))
+        arc, r0 = d.get("seeing_arcsec"), d.get("r0_cm")
+        seeing_extra = (f'<p class="fisico mono">{arc:.2f}″ <span>r₀ {r0:.1f} cm</span></p>' if arc else "")
         ate = lambda x: f'válido até <span class="mono">{x:%H:%M}</span>' if x else ""  # noqa: E731
         atm = "".join([
             card("Transparência", nota(T), ate(vn)),
-            card("Seeing", nota(S), ate(vs)),
+            card("Seeing", nota(S) + seeing_extra, ate(vs)),
             card("Chuva", risco(chuva, NIVEL_RISCO_CHUVA.get(chuva, 3)), ate(vn)),
             card("Orvalho", risco(orvalho, NIVEL_RISCO_ORVALHO.get(orvalho, 3)),
                  f'até o amanhecer (<span class="mono">{vo:%H:%M}</span>)' if vo else ""),
@@ -272,7 +290,7 @@ def montar_html(itens, site, tz, url_repo, dias, tz_nome="horário de Brasília 
       Em Chuva e Orvalho, o tom de "muito favorável" indica risco baixo.</p>
       <p><strong>Siglas dentro dos blocos</strong></p>
       <ul>
-        <li><strong class="mono">1 a 5:</strong> nota geral da condição</li>
+        <li><strong class="mono">1 a 10:</strong> nota geral da condição (transparência e seeing)</li>
         <li><strong class="mono">B / M / A / MA:</strong> risco baixo, moderado, alto ou muito alto</li>
         <li><strong class="mono">Op.</strong> <strong>(em Observar):</strong> oportunista (apenas um setup leve, se abrir)</li>
       </ul>
@@ -311,9 +329,12 @@ def montar_html(itens, site, tz, url_repo, dias, tz_nome="horário de Brasília 
                     n, curto = mapa.get(v, (1, "?"))
                     txt = str(v)
                 else:
-                    n = int(v or 1)
-                    curto = str(n)
-                    txt = f"nota {n} de 5"
+                    n10 = nota10(r["d"], chave)
+                    n = math.ceil(n10 / 2)
+                    curto = str(n10)
+                    txt = f"nota {n10} de 10"
+                    if chave == "seeing" and r["d"].get("seeing_arcsec"):
+                        txt += f", {r['d']['seeing_arcsec']:.2f}″"
                 hora = f'{r["t"].astimezone(tz):%H:%M}'
                 cels.append(f'<td class="{"alvo" if i == i_alvo else ""}"><a class="b mono {nivel_cor(n)}" '
                             f'href="relatorios/{e(r["pdf"].name)}" title="{e(nome)}: {e(txt)} ({hora}). '
@@ -329,8 +350,8 @@ def montar_html(itens, site, tz, url_repo, dias, tz_nome="horário de Brasília 
   <table class="matriz">
     <thead><tr><th scope="col" class="canto"><span class="sr">Item</span></th>{cab}</tr></thead>
     <tbody>
-      {linha("Transparência", "transparencia", "nota de 1 a 5")}
-      {linha("Seeing", "seeing", "nota de 1 a 5")}
+      {linha("Transparência", "transparencia", "nota de 1 a 10")}
+      {linha("Seeing", "seeing", "nota de 1 a 10")}
       {linha("Chuva", "chuva", "risco", {k: (v, k[0].upper()) for k, v in NIVEL_RISCO_CHUVA.items()})}
       {linha("Orvalho", "orvalho", "risco",
              {"baixo": (5, "B"), "moderado": (3, "M"), "alto": (2, "A"), "muito alto": (1, "MA")})}
@@ -458,6 +479,9 @@ h3 {{ font-size:clamp(.92rem, .3vw + .85rem, 1.02rem); font-weight:600; margin:c
 .card .rodape {{ margin:8px 0 0; color:var(--sec); font-size:.74rem; }}
 .medidor {{ display:inline-flex; gap:3px; }}
 .medidor span {{ width:9px; height:20px; border-radius:3px; }}
+.medidor.m10 {{ gap:2px; }} .medidor.m10 span {{ width:6px; height:20px; border-radius:2px; }}
+.fisico {{ margin:8px 0 0; font-weight:700; font-size:.95rem; }}
+.fisico span {{ margin-left:8px; font-weight:500; color:var(--sec); font-size:.8rem; }}
 .led {{ width:9px; height:9px; border-radius:50%; flex:none; }}
 .lua {{ flex:none; }} .lua-sombra {{ fill:var(--vazio); stroke:var(--borda-forte); stroke-width:1; }} .lua-luz {{ fill:var(--texto); }}
 

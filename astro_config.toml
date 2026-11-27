@@ -1,7 +1,8 @@
 # astro_config.toml — limiares das regras do astro_sounding.py e do goes_nowcast.py
+# Notas de transparência e seeing na escala de 1 a 10.
 # Tabelas [[limiar, desconto], ...]: aplica o desconto do maior limiar ultrapassado.
-# [unidades] vento: "km/h", "m/s" ou "kt"
-# [validade]: por quantas horas cada parte do relatório vale (aparece no PDF e na página)
+# [seeing]: cálculo físico (Cn² de Tatarskii, r0, arcsec) e conversão arcsec → nota.
+# [unidades] vento: "km/h", "m/s" ou "kt"; [validade]: horas de validade de cada parte.
 
 [processamento]
 bin_m = 100.0
@@ -17,21 +18,32 @@ ur_gelo_possivel = 90.0
 espessura_min_m = 200.0
 
 [transparencia]
-desconto_baixa = 1.5
-desconto_media = 2.0
-desconto_alta = 1.0
+desconto_baixa = 3.4
+desconto_media = 4.5
+desconto_alta = 2.25
 fator_possivel = 0.4
-pw_mm = [[35.0, 0.5], [45.0, 1.0]]
-ur_baixa_media = [90.0, 0.5]
+pw_mm = [[35.0, 1.1], [45.0, 2.25]]
+ur_baixa_media = [90.0, 1.1]
 
 [seeing]
-jato_ms = [[25.0, 0.5], [35.0, 1.0], [50.0, 2.0]]
-cisalhamento_ms_km = [[8.0, 0.5], [12.0, 1.0], [18.0, 1.5]]
-ri_camadas = [[1, 0.5], [3, 1.0]]
-cape_jkg = [[300.0, 0.5], [1000.0, 1.0]]
-k_index = [[35.0, 0.5]]
+lambda_nm = 500.0
+camada_cn2_m = 200.0
+L0_m = 10.0
+ri_critico = 0.25
+fator_estavel_min = 0.1
+limites_arcsec = [0.7, 0.85, 1.0, 1.25, 1.5, 1.8, 2.1, 2.5, 3.0]
+cape_jkg = [[1000.0, 1.0], [2000.0, 2.0]]
+k_index = [[35.0, 1.0]]
+vento_local_ms = [[8.0, 1.0], [12.0, 2.0]]
 agl_min_m = 1000.0
-vento_local_ms = [[8.0, 0.5], [12.0, 1.0]]
+
+[veredito]
+ceu_profundo_bom = 8
+ceu_profundo_regular = 6
+planetaria_bom = 8
+planetaria_regular = 6
+planetaria_visual = 4
+transparencia_min_planetaria = 4
 
 [chuva]
 cape_jkg = [[500.0, 1], [1500.0, 2]]
@@ -84,9 +96,10 @@ raio_amostra_km = 20
 horizontes_h = [0.5, 1.0, 1.5, 2.0, 3.0]
 desloc_max_kmh = 120.0
 pico_min_correlacao = 0.05
+idade_max_quadros_h = 3.0
 dispersao_max_frac = 0.5
 dif_dir_vento_max = 45.0
 
 [goes.nota]
 peso_agora = 0.5
-penal_cirrus = 1.0
+penal_cirrus = 2.25

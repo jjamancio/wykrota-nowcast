@@ -80,22 +80,33 @@ DEFAULTS = {
         "ur_gelo_possivel": 90.0,
         "espessura_min_m": 200.0,
     },
-    "transparencia": {
-        "desconto_baixa": 1.5,      # nuvem provável p > 700 hPa
-        "desconto_media": 2.0,      # 700–400 hPa
-        "desconto_alta": 1.0,       # p < 400 hPa (cirrus)
+    "transparencia": {             # escala de 1 a 10: parte de 10 e desconta
+        "desconto_baixa": 3.4,      # nuvem provável p > 700 hPa
+        "desconto_media": 4.5,      # 700–400 hPa
+        "desconto_alta": 2.25,      # p < 400 hPa (cirrus)
         "fator_possivel": 0.4,      # fração do desconto se só "possível"
-        "pw_mm": [[35.0, 0.5], [45.0, 1.0]],      # água precipitável
-        "ur_baixa_media": [90.0, 0.5],            # UR média no 1º km
+        "pw_mm": [[35.0, 1.1], [45.0, 2.25]],     # água precipitável
+        "ur_baixa_media": [90.0, 1.1],            # UR média no 1º km
     },
     "seeing": {
-        "jato_ms": [[25.0, 0.5], [35.0, 1.0], [50.0, 2.0]],
-        "cisalhamento_ms_km": [[8.0, 0.5], [12.0, 1.0], [18.0, 1.5]],
-        "ri_camadas": [[1, 0.5], [3, 1.0]],       # nº de camadas com Ri < 0,25
-        "cape_jkg": [[300.0, 0.5], [1000.0, 1.0]],
-        "k_index": [[35.0, 0.5]],                 # ambiente convectivo (outflows, nuvens)
-        "agl_min_m": 1000.0,                      # ignora camada limite
-        "vento_local_ms": [[8.0, 0.5], [12.0, 1.0]],  # vento na altitude do observatório
+        # Cálculo físico: Cn² de Tatarskii por camada, do observatório até a tropopausa
+        "lambda_nm": 500.0,         # comprimento de onda de referência
+        "camada_cn2_m": 200.0,      # espessura das camadas para Cn²
+        "L0_m": 10.0,               # escala externa da turbulência na atmosfera livre
+        "ri_critico": 0.25,         # abaixo disso a camada é turbulenta (peso 1)
+        "fator_estavel_min": 0.1,   # peso mínimo de camadas estáveis (turbulência intermitente)
+        # Nota 1–10 pelo seeing em arcsec: ≤0,7″ = 10; ≤0,85″ = 9; ≤1,0″ = 8; … ; ≥3,0″ = 1
+        "limites_arcsec": [0.7, 0.85, 1.0, 1.25, 1.5, 1.8, 2.1, 2.5, 3.0],
+        # Penalidades extras (pontos na escala 1–10), só para efeitos locais fortes
+        "cape_jkg": [[1000.0, 1.0], [2000.0, 2.0]],
+        "k_index": [[35.0, 1.0]],
+        "vento_local_ms": [[8.0, 1.0], [12.0, 2.0]],  # vento na altitude do observatório
+        "agl_min_m": 1000.0,        # tabela de cisalhamento do PDF ignora a camada limite
+    },
+    "veredito": {                  # limiares na escala 1–10
+        "ceu_profundo_bom": 8, "ceu_profundo_regular": 6,
+        "planetaria_bom": 8, "planetaria_regular": 6, "planetaria_visual": 4,
+        "transparencia_min_planetaria": 4,
     },
     "chuva": {
         "cape_jkg": [[500.0, 1], [1500.0, 2]],
@@ -458,6 +469,77 @@ def shear_and_ri(prof, sfc_elev, cfg):
     return pd.DataFrame(out)
 
 
+def seeing_fisico(prof, z_ini, z_fim, cfg):
+    """
+    Seeing da atmosfera livre a partir da sondagem.
+
+    Para cada camada de espessura dz entre z_ini (observatório) e z_fim (tropopausa):
+      M   = 79e-6 · p / T² · dθ/dz            (gradiente do índice de refração; p em hPa, T em K)
+      Cn² = 2,8 · M² · L0^(4/3) · f(Ri)        (Tatarskii, com escala externa L0)
+      f(Ri) = 1 se Ri < Ri_c (ou instável); senão max(f_min, Ri_c / Ri)
+    Integra J = Σ Cn²·dz e obtém
+      r0 = (0,423 · k² · J)^(-3/5),  k = 2π/λ     (parâmetro de Fried no zênite)
+      ε  = 0,98 · λ / r0                           (FWHM do seeing, em radianos → arcsec)
+    Não inclui a camada superficial abaixo do observatório nem efeitos da cúpula e do telescópio.
+    """
+    sc = cfg["seeing"]
+    lam = sc["lambda_nm"] * 1e-9
+    dz = sc["camada_cn2_m"]
+    L43 = sc["L0_m"] ** (4.0 / 3.0)
+    ric, fmin = sc["ri_critico"], sc["fator_estavel_min"]
+    z = prof["z"].values
+    z_ini = max(z_ini, float(z.min()))
+    z_fim = min(z_fim, float(z.max()))
+    if z_fim - z_ini < 2 * dz:
+        return None
+
+    def at(col, zz):
+        return float(np.interp(zz, z, prof[col].values))
+
+    camadas, J = [], 0.0
+    z0 = z_ini
+    while z0 + dz / 2 < z_fim:
+        z1 = min(z0 + dz, z_fim)
+        h = z1 - z0
+        th0, th1 = at("theta", z0), at("theta", z1)
+        tv0, tv1 = at("thetav", z0), at("thetav", z1)
+        du, dv = at("u", z1) - at("u", z0), at("v", z1) - at("v", z0)
+        S2 = (du * du + dv * dv) / (h * h)
+        n2 = G / (0.5 * (tv0 + tv1)) * (tv1 - tv0) / h
+        ri = n2 / S2 if S2 > 1e-10 else float("inf")
+        f = 1.0 if ri < ric else max(fmin, ric / ri)
+        pm = 0.5 * (at("p", z0) + at("p", z1))
+        tm = 0.5 * (at("t", z0) + at("t", z1)) + 273.15
+        M = 79e-6 * pm / (tm * tm) * (th1 - th0) / h
+        cn2 = 2.8 * M * M * L43 * f
+        J += cn2 * h
+        camadas.append(dict(z0=z0, z1=z1, p0=at("p", z0), p1=at("p", z1), cn2=cn2, ri=ri, peso=f, j=cn2 * h))
+        z0 = z1
+    if J <= 0:
+        return None
+    k = 2 * math.pi / lam
+    r0 = (0.423 * k * k * J) ** (-3.0 / 5.0)
+    eps = 0.98 * lam / r0 * 206265.0
+    for c in camadas:
+        c["fracao"] = c["j"] / J
+    # contribuição por faixa de altitude (acumulada)
+    faixas = [("até 3 km acima do observatório", z_ini, z_ini + 3000), ("3–8 km", z_ini + 3000, z_ini + 8000),
+              ("acima de 8 km", z_ini + 8000, 1e9)]
+    contrib = [(nome, sum(c["fracao"] for c in camadas if a <= c["z0"] < b)) for nome, a, b in faixas]
+    principais = sorted(camadas, key=lambda c: -c["fracao"])[:3]
+    return dict(arcsec=eps, r0_cm=r0 * 100, J=J, z_ini=z_ini, z_fim=z_fim, n_camadas=len(camadas),
+                n_turbulentas=sum(1 for c in camadas if c["ri"] < ric), contrib=contrib, principais=principais,
+                lambda_nm=sc["lambda_nm"], L0_m=sc["L0_m"])
+
+
+def nota_seeing_arcsec(arcsec, cfg):
+    lims = cfg["seeing"]["limites_arcsec"]
+    for i, lim in enumerate(lims):
+        if arcsec <= lim + 1e-9 and i < len(lims) - 1:
+            return 10 - i
+    return 1 if arcsec >= lims[-1] else 2
+
+
 def lapse_features(prof, sfc_elev):
     z = prof["z"].values
     t = prof["t"].values
@@ -509,11 +591,12 @@ def moon_illumination(dt: datetime):
 # --------------------------------------------------------------------------
 # Regras de pontuação
 # --------------------------------------------------------------------------
-def score_all(prof, layers, shear_df, parcels, pw, sfc, moon_frac, cfg, sfc_elev, obs=None, cape_sat=None):
+def score_all(prof, layers, shear_df, parcels, pw, sfc, moon_frac, cfg, sfc_elev, obs=None, cape_sat=None,
+              seeing_fis=None):
     rep = {"transparencia": {}, "seeing": {}, "chuva": {}, "orvalho": {}}
     # Transparência
     tcfg = cfg["transparencia"]
-    score = 5.0
+    score = 10.0
     det = []
     for L in layers:
         base = {"baixa": tcfg["desconto_baixa"], "média": tcfg["desconto_media"],
@@ -533,53 +616,53 @@ def score_all(prof, layers, shear_df, parcels, pw, sfc, moon_frac, cfg, sfc_elev
         if rhm >= tcfg["ur_baixa_media"][0]:
             score -= tcfg["ur_baixa_media"][1]
             det.append(f"UR média {rhm:.0f}% no 1º km: −{tcfg['ur_baixa_media'][1]:.1f}")
-    rep["transparencia"] = dict(nota=int(max(1, min(5, math.floor(score + 0.5)))), bruto=score, detalhes=det)
+    rep["transparencia"] = dict(nota=int(max(1, min(10, math.floor(score + 0.5)))), bruto=score, detalhes=det)
 
-    # Seeing
+    # Seeing: nota 1–10 a partir do seeing físico (arcsec); penalidades só para efeitos locais fortes
     scfg = cfg["seeing"]
-    score = 5.0
     det = []
     upper = prof[(prof["p"] <= 400) & (prof["p"] >= 150)]
     jet = float(upper["spd"].max()) if len(upper) else float("nan")
     jet_p = float(upper.loc[upper["spd"].idxmax(), "p"]) if len(upper) else float("nan")
-    d = step_penalty(jet, scfg["jato_ms"])
-    if d:
-        score -= d
-    det.append(f"vento máx. 400–150 hPa: {wind(jet)} em {jet_p:.0f} hPa" + (f": −{d:.1f}" if d else ""))
     free = shear_df[shear_df["agl0"] >= scfg["agl_min_m"]]
     smax = float(free["shear_ms_km"].max()) if len(free) else float("nan")
-    srow = free.loc[free["shear_ms_km"].idxmax()] if len(free) else None
-    d = step_penalty(smax, scfg["cisalhamento_ms_km"])
-    if d:
-        score -= d
-    if srow is not None:
-        det.append(f"cisalhamento máx.: {smax:.1f} m/s/km entre {srow.p0:.0f} e {srow.p1:.0f} hPa"
-                   + (f": −{d:.1f}" if d else ""))
     nri = int((free["ri"] < 0.25).sum()) if len(free) else 0
-    d = step_penalty(nri, scfg["ri_camadas"])
-    if d:
-        score -= d
-    det.append(f"camadas com Ri < 0,25 (acima de {scfg['agl_min_m']:.0f} m AGL): {nri}" + (f": −{d:.1f}" if d else ""))
     mu = max(parcels.values(), key=lambda r: r.cape)
     cape_use = mu.cape if cape_sat is None else cape_sat
     cape_lbl = "CAPE" if cape_sat is None else "CAPE do satélite (DSI)"
+    if seeing_fis:
+        base = nota_seeing_arcsec(seeing_fis["arcsec"], cfg)
+        det.append(f"seeing estimado da atmosfera livre: {seeing_fis['arcsec']:.2f}\" em {seeing_fis['lambda_nm']:.0f} nm "
+                   f"(r0 = {seeing_fis['r0_cm']:.1f} cm) → nota base {base}/10")
+        det.append("origem da turbulência: " + "; ".join(f"{n} {fr:.0%}" for n, fr in seeing_fis["contrib"]))
+        top = seeing_fis["principais"][0]
+        det.append(f"camada mais turbulenta: {top['p0']:.0f}–{top['p1']:.0f} hPa ({top['fracao']:.0%} do total, "
+                   f"Ri {'∞' if math.isinf(top['ri']) else f'{top['ri']:.2f}'})")
+    else:
+        base = 5
+        det.append("seeing físico indisponível (perfil insuficiente); nota base 5/10")
+    score = float(base)
     d = step_penalty(cape_use, scfg["cape_jkg"])
     if d:
         score -= d
-        det.append(f"instabilidade ({cape_lbl} {cape_use:.0f} J/kg): −{d:.1f}")
+        det.append(f"instabilidade convectiva forte ({cape_lbl} {cape_use:.0f} J/kg): −{d:g}")
+    kk = k_index(prof)
+    d = step_penalty(kk, scfg["k_index"])
+    if d:
+        score -= d
+        det.append(f"ambiente convectivo (índice K {kk:.0f}): −{d:g}")
     if obs and obs.get("vento_ms") is not None:
         d = step_penalty(obs["vento_ms"], scfg["vento_local_ms"])
         if d:
             score -= d
         det.append(f"vento a {obs['elev']:.0f} m (observatório): {wind(obs['vento_ms'])} de "
-                   f"{obs['dir']:.0f}°" + (f": −{d:.1f}" if d else ""))
-    kk = k_index(prof)
-    d = step_penalty(kk, scfg["k_index"])
-    if d:
-        score -= d
-        det.append(f"ambiente convectivo (índice K {kk:.0f}): −{d:.1f}")
-    rep["seeing"] = dict(nota=int(max(1, min(5, math.floor(score + 0.5)))), bruto=score, detalhes=det,
-                         jato_ms=jet, jato_p=jet_p, cis_max=smax, n_ri=nri)
+                   f"{obs['dir']:.0f}°" + (f": −{d:g}" if d else ""))
+    det.append(f"contexto: vento máx. 400–150 hPa {wind(jet)} em {jet_p:.0f} hPa; "
+               f"{nri} camada(s) de 500 m com Ri < 0,25")
+    rep["seeing"] = dict(nota=int(max(1, min(10, math.floor(score + 0.5)))), bruto=score, detalhes=det,
+                         jato_ms=jet, jato_p=jet_p, cis_max=smax, n_ri=nri,
+                         arcsec=None if not seeing_fis else seeing_fis["arcsec"],
+                         r0_cm=None if not seeing_fis else seeing_fis["r0_cm"], nota_base=base)
 
     # Chuva
     ccfg = cfg["chuva"]
@@ -611,20 +694,23 @@ OBSERVAR_TXT = {"Sim": "A noite está boa para observar", "Oportunista": "Só um
 
 
 def verdict(T, S, moon_frac, cfg):
+    """T e S na escala 1–10."""
     lim = cfg["lua"]["limite_ceu_profundo"]
-    if T >= 4 and moon_frac < lim:
+    v = cfg["veredito"]
+    if T >= v["ceu_profundo_bom"] and moon_frac < lim:
         dso = ("Favorável", "Céu limpo e Lua fraca.")
-    elif T >= 4:
+    elif T >= v["ceu_profundo_bom"]:
         dso = ("Marginal", f"Céu bom, mas a Lua está {moon_frac:.0%} iluminada: prefira banda estreita (narrowband).")
-    elif T == 3:
+    elif T >= v["ceu_profundo_regular"]:
         dso = ("Marginal", "Nebulosidade parcial/umidade: integrações curtas e descarte de subs.")
     else:
         dso = ("Desfavorável", "Nuvens e umidade comprometem a transparência.")
-    if S >= 4 and T >= 2:
+    tmin = v["transparencia_min_planetaria"]
+    if S >= v["planetaria_bom"] and T >= tmin:
         pla = ("Favorável", "Atmosfera estável; aproveite alta ampliação.")
-    elif S >= 3 and T >= 2:
+    elif S >= v["planetaria_regular"] and T >= tmin:
         pla = ("Marginal", "Seeing médio; ampliações moderadas e lucky imaging.")
-    elif S >= 2 and T >= 2:
+    elif S >= v["planetaria_visual"] and T >= tmin:
         pla = ("Marginal", "Só visual/oportunista, em brechas.")
     else:
         pla = ("Desfavorável", "Turbulência e/ou nuvens.")
@@ -738,6 +824,12 @@ def find_font():
     return None
 
 
+def seeing_curto(sv):
+    if sv.get("arcsec"):
+        return f"Seeing: {sv['arcsec']:.2f}\" (Nota {sv['nota']}/10)"
+    return f"Seeing {sv['nota']}/10"
+
+
 def validity_text(c):
     v = c.get("validade")
     if not v:
@@ -805,9 +897,9 @@ def build_pdf(out_pdf, png, ctx):
                                ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
         return t
 
-    def stars(n):
+    def stars(n, total=10):
         return (f"<font color='#c98a12'>{star_on * n}</font>"
-                f"<font color='#bbbbbb'>{star_off * (5 - n)}</font>")
+                f"<font color='#bbbbbb'>{star_off * (total - n)}</font>")
 
     c = ctx
     rep = c["rep"]
@@ -829,7 +921,7 @@ def build_pdf(out_pdf, png, ctx):
          P(f"{c['site']} · Alvo: {c['target']:%d/%m/%Y %H:%MZ} · Sonda {c['meta']['type']} "
            f"{c['meta']['serial']} (lançamento {c['meta']['launch']:%d/%m %H:%MZ})", sub),
          P(fontes, small), Spacer(1, 4),
-         box(f"<b>Transparência {T}/5 · Seeing {S}/5 · Chuva: {rep['chuva']['nivel']} · "
+         box(f"<b>Transparência {T}/10 · {seeing_curto(rep['seeing'])} · Chuva: {rep['chuva']['nivel']} · "
              f"Orvalho: {rep['orvalho']['nivel']}</b><br/>"
              f"Veredito: <b>{OBSERVAR_TXT[rep['veredito']['montar'][0]]}</b> — {rep['veredito']['montar'][1]}<br/>"
              + validity_text(c),
@@ -907,9 +999,9 @@ def build_pdf(out_pdf, png, ctx):
         for k, v in (sat.get("previsoes") or {}).items():
             s.append(B(f"{k}: {v['evento']}" + (f" em ~{v['h']:.1f} h" if v.get("h") else "") + "."))
         tr = rep["transparencia"]
-        s.append(P(f"<b>Transparência pelo satélite: {sat['transparencia_sat']['nota']}/5</b> · peso na nota final "
+        s.append(P(f"<b>Transparência pelo satélite: {rep['transparencia'].get('satelite', sat['transparencia_sat']['nota'])}/10</b> · peso na nota final "
                    f"{tr.get('peso_sat', 0):.0%} (quadro a {sat['dh']:.1f} h do alvo) · nota final "
-                   f"<b>{tr['nota']}/5</b> (sondagem {tr.get('sondagem')}/5)."))
+                   f"<b>{tr['nota']}/10</b> (sondagem {tr.get('sondagem')}/10)."))
         l2 = sat.get("l2") or {}
         if l2:
             rows = [["Produto L2", "Horário", "Raio", "Válidos", "p10 / mediana / p90"]]
@@ -950,6 +1042,11 @@ def build_pdf(out_pdf, png, ctx):
                                    P(ql_caption, small)]))
 
     s.append(P("2. Seeing (turbulência)", h2))
+    if rep["seeing"].get("arcsec"):
+        s.append(P(f"<b>{seeing_curto(rep['seeing'])}</b> · parâmetro de Fried r0 = <b>{rep['seeing']['r0_cm']:.1f} cm</b> "
+                   "(zênite, 500 nm). Estimativa da atmosfera livre, do observatório até a tropopausa, pelo perfil "
+                   "de Cn² (Tatarskii) da sondagem; não inclui a camada junto ao solo, a cúpula nem o telescópio, "
+                   "que costumam piorar o valor real.", small))
     for d in rep["seeing"]["detalhes"]:
         s.append(B(d))
     if c["lapse"]:
@@ -973,8 +1070,10 @@ def build_pdf(out_pdf, png, ctx):
 
     s.append(P("4. Veredito", h2))
     s.append(table([["Critério", "Nota"],
-                    ["Transparência", f"{stars(T)}  <b>{T}/5</b>  (pontuação {rep['transparencia']['bruto']:.1f})"],
-                    ["Seeing", f"{stars(S)}  <b>{S}/5</b>  (pontuação {rep['seeing']['bruto']:.1f})"]],
+                    ["Transparência", f"{stars(T)}  <b>{T}/10</b>  (pontuação {rep['transparencia']['bruto']:.1f})"],
+                    ["Seeing", f"{stars(S)}  <b>{S}/10</b>"
+                               + (f" · <b>{rep['seeing']['arcsec']:.2f}\"</b> · r0 = {rep['seeing']['r0_cm']:.1f} cm"
+                                  if rep['seeing'].get('arcsec') else "")]],
                    [4 * cm, 13 * cm]))
     s.append(Spacer(1, 5))
     v = rep["veredito"]
@@ -1058,6 +1157,8 @@ def main():
     ap.add_argument("--lon", type=float, help="longitude do observatório")
     ap.add_argument("--obs-elev", type=float, help="altitude do observatório (m); condições lidas no perfil")
     ap.add_argument("--sat-json", type=Path, help="JSON do goes_nowcast.py")
+    ap.add_argument("--sat-ignora-idade", action="store_true",
+                    help="não reduzir o peso do satélite pela idade da imagem (para reprocessar noites passadas)")
     ap.add_argument("--wind-unit", choices=["km/h", "m/s", "kt"], help="unidade de vento nas saídas")
     ap.add_argument("--pdf", type=Path)
     ap.add_argument("--json", type=Path)
@@ -1144,7 +1245,15 @@ def main():
                    origem=f"nível mais baixo da sonda, {prof['z'].iloc[0]:.0f} m / {p[0]:.0f} hPa"
                    + (", descida" if prof["fonte"].iloc[0] == "descida" else ""))
     moon = moon_illumination(target)
-    rep = score_all(prof, layers, shear, parcels, pw, sfc, moon[0], cfg, sfc_elev, obs)
+    # Seeing físico: do observatório (ou da base do perfil) até a tropopausa / p_topo
+    z_ini = args.obs_elev if args.obs_elev is not None else sfc_elev
+    z_topo = float(tropo["z"].max())
+    z_fim = min(trop["z"], z_topo) if trop else z_topo
+    seeing_fis = seeing_fisico(prof, z_ini, z_fim, cfg)
+    if seeing_fis and args.obs_elev is not None and float(prof["z"].min()) > args.obs_elev:
+        notes.append(f"O perfil começa acima do observatório ({float(prof['z'].min()):.0f} m): o seeing calculado "
+                     "não inclui a camada entre o observatório e o início dos dados.")
+    rep = score_all(prof, layers, shear, parcels, pw, sfc, moon[0], cfg, sfc_elev, obs, seeing_fis=seeing_fis)
 
     # Combinação com o satélite
     sat = None
@@ -1152,7 +1261,11 @@ def main():
         sat = json.loads(args.sat_json.read_text())
         t_sat = datetime.fromisoformat(sat["ultimo_quadro"])
         dh_sat = abs((target - t_sat).total_seconds()) / 3600
-        w = max(0.0, 1.0 - dh_sat / cfg["satelite"]["horizonte_h"])
+        w_alvo = max(0.0, 1.0 - dh_sat / cfg["satelite"]["horizonte_h"])
+        # idade da imagem quando o relatório é gerado (imagens velhas pesam menos)
+        idade_sat = max(0.0, (datetime.now(timezone.utc) - t_sat).total_seconds() / 3600)
+        w_idade = max(0.0, 1.0 - idade_sat / cfg["satelite"]["horizonte_h"])
+        w = min(w_alvo, w_idade) if not args.sat_ignora_idade else w_alvo
         # Produtos L2: CAPE (DSI) e água precipitável (TPW) substituem os da sonda quando o
         # satélite está perto do alvo e há cobertura suficiente (só existem em céu claro)
         l2 = sat.get("l2") or {}
@@ -1171,7 +1284,7 @@ def main():
                              f"({pw:.0f} mm).")
         if cape_sat is not None or pw_use is not None:
             rep = score_all(prof, layers, shear, parcels, pw if pw_use is None else pw_use, sfc, moon[0], cfg,
-                            sfc_elev, obs, cape_sat)
+                            sfc_elev, obs, cape_sat, seeing_fis=seeing_fis)
         lst = l2.get("LST") or {}
         if lst.get("lst_menos_td_c") is not None:
             dd = lst["lst_menos_td_c"]
@@ -1180,7 +1293,9 @@ def main():
                             if dd <= sc["lst_orvalho_c"] else "."))
         T_snd = rep["transparencia"]["nota"]
         T_sat = sat["transparencia_sat"]["nota"]
-        T_fin = int(max(1, min(5, math.floor(w * T_sat + (1 - w) * T_snd + 0.5))))
+        if sat.get("escala", 5) == 5:  # goes_nowcast antigo (1–5)
+            T_sat = int(round(1 + (T_sat - 1) * 2.25))
+        T_fin = int(max(1, min(10, math.floor(w * T_sat + (1 - w) * T_snd + 0.5))))
         rep["transparencia"].update(sondagem=T_snd, satelite=T_sat, peso_sat=w, nota=T_fin)
         rep["veredito"] = verdict(T_fin, rep["seeing"]["nota"], moon[0], cfg)
         sat["peso"] = w
@@ -1190,8 +1305,15 @@ def main():
                              (sat["lon"] - args.lon) * 111.32 * math.cos(math.radians(args.lat)))
             if dkm > cfg["satelite"]["dist_max_km"]:
                 notes.append(f"O JSON do satélite é de um ponto a {dkm:.0f} km do observatório.")
-        notes.append(f"Satélite: último quadro {t_sat:%d/%m %H:%MZ}, a {dh_sat:.1f} h do alvo → peso {w:.0%} na "
-                     f"transparência (sondagem {T_snd}/5, satélite {T_sat}/5, final {T_fin}/5).")
+        ign = sat.get("ignorados") or []
+        if ign or (sat.get("atraso_h") or 0) > 1.0:
+            notes.insert(0, f"ATENÇÃO: o satélite não tem imagem nova utilizável desde {t_sat:%d/%m %H:%MZ}"
+                         + (f" ({len(ign)} passagem(ns) mais recente(s) incompleta(s) ou com erro, por exemplo "
+                            f"{ign[0]['pasta']}: {ign[0]['motivo']})" if ign else "")
+                         + ". Verifique a recepção do GOES-19.")
+        notes.append(f"Satélite: último quadro {t_sat:%d/%m %H:%MZ}, a {dh_sat:.1f} h do alvo e com "
+                     f"{idade_sat:.1f} h de idade → peso {w:.0%} na "
+                     f"transparência (sondagem {T_snd}/10, satélite {T_sat}/10, final {T_fin}/10).")
 
     levels = []
     for pl in (925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100):
@@ -1227,7 +1349,14 @@ def main():
 
     summary = dict(
         site=args.site, alvo=target.isoformat(), lancamento=launch.isoformat(), sonda=meta["serial"],
+        escala_notas=10,
         transparencia=rep["transparencia"]["nota"], seeing=rep["seeing"]["nota"],
+        seeing_arcsec=None if not seeing_fis else round(seeing_fis["arcsec"], 2),
+        r0_cm=None if not seeing_fis else round(seeing_fis["r0_cm"], 1),
+        seeing_fisico=None if not seeing_fis else dict(
+            lambda_nm=seeing_fis["lambda_nm"], L0_m=seeing_fis["L0_m"], cn2_integral=seeing_fis["J"],
+            de_m=round(seeing_fis["z_ini"]), ate_m=round(seeing_fis["z_fim"]),
+            contribuicao={n: round(fr, 3) for n, fr in seeing_fis["contrib"]}, nota_base=rep["seeing"]["nota_base"]),
         chuva=rep["chuva"]["nivel"], orvalho=rep["orvalho"]["nivel"],
         montar=rep["veredito"]["montar"][0], ceu_profundo=rep["veredito"]["ceu_profundo"][0],
         planetaria=rep["veredito"]["planetaria"][0], lua_iluminada=round(moon[0], 2),
@@ -1242,7 +1371,10 @@ def main():
     out_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2, default=str))
 
     print(f"{args.site} — alvo {target:%d/%m %H:%MZ}")
-    print(f"  Transparência {rep['transparencia']['nota']}/5 | Seeing {rep['seeing']['nota']}/5 | "
+    sv = rep["seeing"]
+    seeing_txt = (f"Seeing: {sv['arcsec']:.2f}\" (Nota {sv['nota']}/10), r0 {sv['r0_cm']:.1f} cm"
+                  if sv.get("arcsec") else f"Seeing: Nota {sv['nota']}/10")
+    print(f"  Transparência {rep['transparencia']['nota']}/10 | {seeing_txt} | "
           f"Chuva {rep['chuva']['nivel']} | Orvalho {rep['orvalho']['nivel']}")
     print(f"  Veredito: {OBSERVAR_TXT[rep['veredito']['montar'][0]]} — {rep['veredito']['montar'][1]}")
     print(f"  PDF: {out_pdf}\n  JSON: {out_json}")

@@ -5,7 +5,7 @@ Previsão automática das condições do céu para observação astronômica no 
 - a **radiossonda** lançada em Confins (SBCF), recebida com SDR pelo [radiosonde_auto_rx](https://github.com/projecthorus/radiosonde_auto_rx);
 - as imagens e os produtos do satélite **GOES-19**, recebidos por HRIT e processados pelo [SatDump](https://github.com/SatDump/SatDump).
 
-A cada execução sai um relatório em PDF com as notas de **transparência** e **seeing** (1 a 5), o risco de **chuva** e de **orvalho** e uma recomendação: céu profundo, planetária/lunar ou não montar o equipamento. Os relatórios podem ser publicados automaticamente numa GitHub Page.
+A cada execução sai um relatório em PDF com as notas de **transparência** e **seeing** (1 a 10), o **seeing estimado em segundos de arco** com o parâmetro de Fried r₀, o risco de **chuva** e de **orvalho** e uma recomendação: céu profundo, planetária/lunar ou não observar. Os relatórios podem ser publicados automaticamente numa GitHub Page.
 
 ![Página de relatórios (exemplo com dados simulados)](docs/pagina.png)
 
@@ -123,7 +123,7 @@ Quando a validade das nuvens passa, a página mostra um aviso para esperar a pr�
 
 As notas só ficam confiáveis depois de comparadas com o que aconteceu. O `verificar.sh` faz isso todo dia:
 
-1. **Automático, pelo satélite.** Para cada relatório, mede o céu claro e os cirrus num raio de 25 km do observatório, nas imagens do GOES-19 do horário-alvo até 3 h depois. Converte isso numa "transparência observada" de 1 a 5 e compara com a prevista. O resultado de cada imagem fica em cache, então a verificação continua valendo depois que as imagens forem apagadas.
+1. **Automático, pelo satélite.** Para cada relatório, mede o céu claro e os cirrus num raio de 25 km do observatório, nas imagens do GOES-19 do horário-alvo até 3 h depois. Converte isso numa "transparência observada" de 1 a 10 e compara com a prevista. O resultado de cada imagem fica em cache, então a verificação continua valendo depois que as imagens forem apagadas.
 2. **Registro dos observadores.** Se o `registro_observacoes.csv` tiver noites anotadas, compara também transparência e seeing com o que foi visto no local. O formato e as escalas estão em [docs/registro_observacoes.md](docs/registro_observacoes.md).
 
 Cron sugerido, de manhã:
@@ -145,8 +145,16 @@ Com algumas dezenas de noites verificadas, esses números indicam quais limiares
 
 **Sondagem**
 
-- **Transparência:** desconta pontos por camadas de nuvem prováveis ou possíveis (UR em relação à água acima de −20 °C, em relação ao gelo abaixo), por água precipitável alta e por umidade no primeiro quilômetro.
-- **Seeing:** desconta pelo vento máximo entre 400 e 150 hPa, pelo cisalhamento em camadas de 500 m, pelas camadas com número de Richardson < 0,25, por CAPE e índice K e pelo vento na altitude do observatório.
+- **Transparência (1 a 10):** parte de 10 e desconta pontos por camadas de nuvem prováveis ou possíveis (UR em relação à água acima de −20 °C, em relação ao gelo abaixo), por água precipitável alta e por umidade no primeiro quilômetro.
+- **Seeing físico:** para cada camada de 200 m, do observatório (`--obs-elev`) até a tropopausa, o script calcula a constante de estrutura do índice de refração pela relação de Tatarskii:
+
+  `Cn² = 2,8 · M² · L0^(4/3) · f(Ri)`, com `M = 79·10⁻⁶ · p / T² · dθ/dz`.
+
+  - **Escala externa L0:** 10 m, valor típico da atmosfera livre.
+  - **Peso f(Ri):** vale 1 nas camadas turbulentas (Ri < 0,25) e diminui nas estáveis, até um mínimo de 0,1.
+  - **Integração:** com `J = ∫Cn² dz`, sai o parâmetro de Fried `r₀ = (0,423 · k² · J)^(−3/5)` e o seeing `ε = 0,98 · λ / r₀`, em 500 nm e no zênite.
+- **Nota de seeing (1 a 10):** vem do valor em arcsec (≤ 0,7″ = 10, ≤ 0,85″ = 9, ≤ 1,0″ = 8 … ≥ 3,0″ = 1). Ela só perde pontos com instabilidade convectiva forte (CAPE, índice K) ou vento forte na altitude do observatório.
+- **Limitação:** o seeing calculado é o da **atmosfera livre**. Não inclui a camada junto ao solo, a cúpula nem o telescópio, então o FWHM real tende a ser maior. O `verificar.py` compara os dois quando o registro manual tem FWHM.
 - **Observatório:** as condições são lidas no perfil na altitude dele (`--obs-elev`). O relatório avisa se ele está dentro de uma camada úmida.
 
 **Satélite**
