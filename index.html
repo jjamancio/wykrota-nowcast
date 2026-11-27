@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Observatório Wykrota: condições do céu para observação</title>
+<meta name="description" content="Previsão de transparência, seeing, chuva e orvalho para o Observatório Wykrota, a partir de radiossonda e GOES-19.">
+<meta name="theme-color" content="#080B12">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* ===== Tokens ===== */
+:root {
+  --fundo:#080B12; --card:#111622; --card-2:#0D121C; --borda:rgba(255,255,255,0.08); --borda-forte:rgba(255,255,255,0.18);
+  --texto:#E7ECF5; --sec:#8A94A8; --foco:#7CB3FF;
+  --n5:#1D4ED8; --n4:#3B82F6; --n3:#7FA8EA; --n2:#B9C7DF; --n1:#E3E8F0; --vazio:#1C2333;
+  --t5:#F5F8FF; --t4:#F5F8FF; --t3:#0A1020; --t2:#0A1020; --t1:#0A1020;
+  --bom:#34D399; --meio:#FBBF24; --ruim:#F87171;
+  --ambar:#F59E0B; --ambar-fundo:rgba(245,158,11,0.12); --ambar-texto:#FCD34D;
+  --alvo-borda:rgba(231,236,245,0.55); --alvo-fundo:rgba(255,255,255,0.045);
+  --mono:"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --pad:clamp(16px, 4vw, 32px);
+  --raio:clamp(14px, 1.6vw, 18px);
+  --toque:44px;
+}
+body.noturno {
+  --fundo:#050000; --card:#0C0101; --card-2:#080000; --borda:rgba(239,68,68,0.16); --borda-forte:rgba(239,68,68,0.34);
+  --texto:#EF4444; --sec:#991B1B; --foco:#EF4444;
+  --n5:#EF4444; --n4:#B91C1C; --n3:#7F1D1D; --n2:#4A0E0E; --n1:#2A0707; --vazio:#140202;
+  --t5:#050000; --t4:#050000; --t3:#EF4444; --t2:#EF4444; --t1:#EF4444;
+  --bom:#EF4444; --meio:#DC2626; --ruim:#B91C1C;
+  --ambar:#B91C1C; --ambar-fundo:rgba(185,28,28,0.14); --ambar-texto:#EF4444;
+  --alvo-borda:rgba(239,68,68,0.6); --alvo-fundo:rgba(239,68,68,0.06);
+}
+
+/* ===== Base (mobile primeiro: 360 px) ===== */
+* { box-sizing:border-box; }
+html { background:#080B12; -webkit-text-size-adjust:100%; }
+body { margin:0; background:var(--fundo); color:var(--texto); font-family:Inter, system-ui, sans-serif;
+  font-size:clamp(15px, 0.35vw + 14px, 17px); line-height:1.55; -webkit-font-smoothing:antialiased;
+  transition:background-color .2s, color .2s; }
+.mono { font-family:var(--mono); font-variant-numeric:tabular-nums; letter-spacing:-.01em; }
+header, main, footer { width:100%; max-width:1120px; margin-inline:auto; padding-inline:var(--pad); }
+:focus-visible { outline:2px solid var(--foco); outline-offset:2px; border-radius:6px; }
+.sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+.nb { white-space:nowrap; }
+
+/* Cabeçalho */
+header { display:flex; align-items:center; justify-content:space-between; gap:10px 16px; flex-wrap:wrap; padding-top:clamp(14px, 3vw, 28px); }
+header > div { flex:1 1 240px; min-width:0; }
+header h1 { font-size:clamp(.95rem, .4vw + .85rem, 1.1rem); font-weight:600; margin:0; line-height:1.3; }
+header p { margin:2px 0 0; color:var(--sec); font-size:.84rem; }
+button.modo { flex:none; display:inline-flex; align-items:center; gap:8px; min-height:var(--toque); padding:0 16px;
+  font:inherit; font-size:.86rem; font-weight:500; color:var(--texto); background:var(--card);
+  border:1px solid var(--borda-forte); border-radius:999px; cursor:pointer; touch-action:manipulation; }
+button.modo:hover { border-color:var(--texto); }
+button.modo[aria-pressed="true"] { background:var(--texto); color:var(--fundo); border-color:var(--texto); }
+
+/* Banner de vencido */
+.banner-expirado { display:flex; gap:10px; align-items:flex-start; margin:14px 0 0; padding:12px 14px; border-radius:12px;
+  background:var(--ambar-fundo); border:1px solid var(--ambar); color:var(--ambar-texto); font-weight:600; font-size:.92rem; }
+.banner-expirado[hidden] { display:none; }
+.banner-expirado svg { flex:none; margin-top:1px; }
+.banner-expirado p { margin:0; }
+
+/* Painel de decisão */
+.decisao { --cor:var(--meio); display:grid; grid-template-columns:1fr; margin:14px 0 0;
+  background:var(--card); border:1px solid var(--borda); border-radius:var(--raio); overflow:hidden; position:relative; }
+.decisao::before { content:""; position:absolute; inset:0 0 auto 0; height:3px; background:var(--cor); }
+.decisao.bom { --cor:var(--bom); } .decisao.meio { --cor:var(--meio); } .decisao.ruim { --cor:var(--ruim); }
+.decisao-principal { padding:18px 16px 18px; min-width:0; }
+.meta { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin:0 0 12px; color:var(--sec); font-size:.8rem; }
+.selo { display:inline-block; padding:2px 10px; border-radius:999px; border:1px solid var(--borda-forte); color:var(--texto); font-size:.74rem; }
+.selo.vencido { border-color:var(--ambar); color:var(--ambar-texto); background:var(--ambar-fundo); }
+.status { display:flex; align-items:center; gap:8px; margin:0 0 4px; color:var(--cor); font-size:.82rem; font-weight:600; }
+.led-status { width:9px; height:9px; border-radius:50%; background:var(--cor);
+  box-shadow:0 0 0 4px color-mix(in srgb, var(--cor) 22%, transparent); }
+.decisao h2 { font-size:clamp(1.85rem, 4.2vw + 1rem, 3.4rem); line-height:1.04; font-weight:800; letter-spacing:-.025em;
+  margin:0 0 12px; text-wrap:balance; }
+.decisao.vencida h2, .decisao.vencida .motivos { opacity:.5; }
+.motivos { list-style:none; margin:0 0 12px; padding:0; display:grid; gap:4px; font-size:.94rem; }
+.motivos li { position:relative; padding-left:17px; }
+.motivos li::before { content:""; position:absolute; left:2px; top:.6em; width:7px; height:7px; border-radius:2px; background:var(--cor); }
+.fonte { margin:0 0 14px; color:var(--sec); font-size:.8rem; max-width:62ch; }
+.botao { display:flex; align-items:center; justify-content:center; min-height:var(--toque); width:100%; padding:0 18px;
+  color:var(--fundo); background:var(--texto); text-decoration:none; font-weight:600; border-radius:10px; }
+.botao:hover { opacity:.9; }
+.equipamento { display:grid; grid-template-columns:52px 1fr; column-gap:14px; align-items:center; padding:16px;
+  border-top:1px solid var(--borda); background:color-mix(in srgb, var(--cor) 6%, var(--card)); min-width:0; }
+.eq-rot { grid-column:1 / -1; margin:0 0 10px; color:var(--sec); font-size:.78rem; }
+.eq-icone { grid-row:span 2; width:52px; height:52px; display:grid; place-items:center; border-radius:14px; color:var(--cor);
+  border:1px solid color-mix(in srgb, var(--cor) 40%, transparent); background:color-mix(in srgb, var(--cor) 10%, transparent); }
+.eq-icone svg { width:34px; height:34px; }
+.eq-nome { margin:0; font-weight:700; font-size:clamp(1rem, .4vw + .9rem, 1.15rem); }
+.eq-txt { margin:2px 0 0; color:var(--sec); font-size:.82rem; }
+.chips { grid-column:1 / -1; list-style:none; margin:14px 0 0; padding:12px 0 0; border-top:1px solid var(--borda);
+  display:grid; gap:8px; font-size:.84rem; }
+.chips li { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:8px; }
+.chip-nome { color:var(--sec); } .chip-val { font-weight:600; }
+
+/* Grupos de cartões */
+h3 { font-size:clamp(.92rem, .3vw + .85rem, 1.02rem); font-weight:600; margin:clamp(22px, 3vw, 34px) 0 10px; }
+.cards { display:grid; gap:clamp(8px, 1.2vw, 12px); }
+.cards.c4 { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+.cards.c3 { grid-template-columns:1fr; }
+.card { background:var(--card); border:1px solid var(--borda); border-radius:14px; padding:12px 14px; min-width:0; }
+.card .rot { margin:0 0 6px; color:var(--sec); font-size:.8rem; }
+.valor-linha { display:flex; align-items:center; justify-content:space-between; gap:8px 10px; flex-wrap:wrap; }
+.card-lua .valor-linha { justify-content:flex-start; }
+.valor { margin:0; font-weight:700; font-size:clamp(.98rem, .5vw + .88rem, 1.12rem); display:flex; align-items:center; gap:8px; line-height:1.25; }
+.valor.mono { font-size:clamp(1.35rem, 1.2vw + 1.05rem, 1.75rem); line-height:1; }
+.valor .de { font-size:.78rem; font-weight:500; color:var(--sec); font-family:Inter, system-ui, sans-serif; }
+.card .rodape { margin:8px 0 0; color:var(--sec); font-size:.74rem; }
+.medidor { display:inline-flex; gap:3px; }
+.medidor span { width:9px; height:20px; border-radius:3px; }
+.medidor.m10 { gap:2px; } .medidor.m10 span { width:6px; height:20px; border-radius:2px; }
+.fisico { margin:8px 0 0; font-weight:700; font-size:.95rem; }
+.fisico span { margin-left:8px; font-weight:500; color:var(--sec); font-size:.8rem; }
+.led { width:9px; height:9px; border-radius:50%; flex:none; }
+.lua { flex:none; } .lua-sombra { fill:var(--vazio); stroke:var(--borda-forte); stroke-width:1; } .lua-luz { fill:var(--texto); }
+
+/* Escala e legenda */
+.n5 { background:var(--n5); } .n4 { background:var(--n4); } .n3 { background:var(--n3); }
+.n2 { background:var(--n2); } .n1 { background:var(--n1); } .vazio { background:var(--vazio); }
+body.noturno .n1, body.noturno .n2, body.noturno .vazio { box-shadow:inset 0 0 0 1px rgba(239,68,68,.22); }
+.escala { list-style:none; margin:0 0 10px; padding:0; display:flex; flex-wrap:wrap; gap:6px 14px; color:var(--sec); font-size:.8rem; }
+.escala li { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+.sw { width:18px; height:12px; border-radius:3px; display:inline-block; }
+details { color:var(--sec); font-size:.88rem; background:var(--card); border:1px solid var(--borda); border-radius:12px; }
+summary { display:flex; align-items:center; gap:8px; min-height:var(--toque); padding:0 14px; cursor:pointer;
+  color:var(--texto); list-style:none; font-weight:500; }
+summary::-webkit-details-marker { display:none; }
+summary::after { content:"+"; margin-left:auto; color:var(--sec); font-family:var(--mono); font-size:1.1rem; }
+details[open] summary::after { content:"−"; }
+.explica { max-width:68ch; padding:0 14px 12px 40px; }
+.explica p { margin:6px 0; } .explica ul { margin:4px 0 8px; padding-left:1.1em; }
+.explica strong { color:var(--texto); font-weight:600; }
+
+/* Matriz horária */
+.noite { margin-top:12px; background:var(--card); border:1px solid var(--borda); border-radius:var(--raio); overflow:hidden; }
+.noite h4 { margin:0; padding:12px 14px 4px; font-size:.9rem; font-weight:600; }
+.rolagem { overflow-x:auto; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain; scroll-behavior:smooth;
+  scrollbar-width:thin; padding:0 0 10px; }
+table.matriz { border-collapse:separate; border-spacing:0; font-size:.76rem; }
+.matriz th, .matriz td { padding:3px 2px; }
+.matriz th:first-child, .matriz td:first-child { position:sticky; left:0; z-index:2; background:var(--card);
+  padding-left:14px; padding-right:12px; text-align:left; white-space:nowrap;
+  box-shadow:1px 0 0 var(--borda), 8px 0 10px -8px rgba(0,0,0,.7); }
+.matriz tbody th { color:var(--texto); font-weight:500; }
+.matriz th { font-weight:400; color:var(--sec); }
+.matriz thead th { text-align:center; vertical-align:top; padding-top:6px; padding-bottom:4px; }
+.matriz thead th:first-child { vertical-align:bottom; }
+.matriz thead a { color:var(--sec); text-decoration:none; font-size:.72rem; display:inline-flex; align-items:center;
+  justify-content:center; min-height:24px; }
+.matriz .marca { display:block; font-size:.62rem; line-height:1.1; color:var(--texto); }
+.matriz th.alvo, .matriz td.alvo { background:var(--alvo-fundo); border-left:1px solid var(--alvo-borda); border-right:1px solid var(--alvo-borda); }
+.matriz thead th.alvo { border-top:1px solid var(--alvo-borda); border-radius:8px 8px 0 0; }
+.matriz thead th.alvo a { color:var(--texto); font-weight:700; }
+.matriz tbody tr:last-child td.alvo { border-bottom:1px solid var(--alvo-borda); border-radius:0 0 8px 8px; }
+.matriz .dica { display:block; font-size:.66rem; color:var(--sec); font-weight:400; }
+a.b { display:flex; align-items:center; justify-content:center; min-width:40px; min-height:var(--toque); border-radius:7px;
+  text-decoration:none; font-weight:700; font-size:.74rem; cursor:pointer; touch-action:manipulation;
+  transition:transform .12s ease, box-shadow .12s ease; }
+a.b:hover { transform:translateY(-1px); box-shadow:0 0 0 2px var(--foco); }
+a.b:active { transform:scale(.97); }
+a.b.n5 { color:var(--t5); } a.b.n4 { color:var(--t4); } a.b.n3 { color:var(--t3); }
+a.b.n2 { color:var(--t2); } a.b.n1 { color:var(--t1); }
+
+footer { color:var(--sec); font-size:.8rem; padding-top:36px; padding-bottom:36px; }
+footer p { max-width:72ch; }
+footer a { color:var(--texto); word-break:break-word; }
+
+/* ===== ≥ 600 px ===== */
+@media (min-width:600px) {
+  .decisao-principal { padding:24px 24px 22px; }
+  .botao { display:inline-flex; width:auto; }
+  .equipamento { padding:20px 24px; }
+  .cards.c4 { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  table.matriz { font-size:.8rem; }
+  a.b { min-width:46px; font-size:.78rem; }
+}
+
+/* ===== ≥ 900 px (desktop) ===== */
+@media (min-width:900px) {
+  .decisao { grid-template-columns:1.6fr 1fr; margin-top:20px; }
+  .decisao-principal { padding:30px 32px 28px; }
+  .meta { font-size:.84rem; margin-bottom:18px; }
+  .motivos { font-size:1rem; gap:6px; margin-bottom:16px; }
+  .fonte { font-size:.86rem; margin-bottom:18px; }
+  .equipamento { display:block; border-top:0; border-left:1px solid var(--borda); padding:30px 28px; }
+  .eq-icone { width:60px; height:60px; } .eq-icone svg { width:40px; height:40px; }
+  .eq-nome { margin-top:14px; } .eq-txt { margin-bottom:0; }
+  .chips { margin-top:18px; }
+  .cards.c4 { grid-template-columns:repeat(4, minmax(0, 1fr)); }
+  .cards.c3 { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+  .card { padding:16px 18px; }
+  /* colunas distribuídas por igual; rolagem só se a noite tiver horários demais para a largura */
+  table.matriz { width:100%; }
+  .matriz th:first-child, .matriz td:first-child { width:150px; box-shadow:1px 0 0 var(--borda); }
+  .matriz td a.b { width:100%; min-width:0; }
+  .matriz thead a { font-size:.78rem; }
+}
+
+@media (hover:none) { a.b:hover { transform:none; box-shadow:none; } }
+@media (prefers-reduced-motion:reduce) { * { transition:none !important; scroll-behavior:auto !important; }
+  a.b:hover, a.b:active { transform:none; } }
+</style>
+</head>
+<body>
+<script>
+try { if (localStorage.getItem("modoVermelho") === "1") document.body.classList.add("noturno"); } catch (e) {}
+</script>
+<header>
+  <div>
+    <h1>Observatório Wykrota: condições do céu para observação</h1>
+    <p>Previsão automática a partir da radiossonda de Confins e do satélite <span class="nb">GOES-19</span></p>
+  </div>
+  <button class="modo" type="button" aria-pressed="false" id="modo"
+          title="Cores vermelhas para preservar a visão no escuro"><svg class="olho" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/></svg><span>Modo noturno</span></button>
+</header>
+<main>
+<div class="banner-expirado" role="alert" hidden><svg class="" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 20h19L12 3Z"/><path d="M12 10v4.5"/><circle cx="12" cy="17.2" r=".6" fill="currentColor"/></svg><p>Este relatório passou da validade às <span class="mono">02:30</span>. Aguarde a próxima atualização antes de decidir.</p></div>
+
+<section class="decisao ruim" aria-labelledby="veredito">
+  <div class="decisao-principal">
+    <p class="meta"><span>Atualizado às <span class="mono">00:00</span> de <span class="mono">27/11</span>
+      (horário de Brasília)</span><span class="selo mono" data-ate="2026-11-27T05:30:20+00:00" data-hora="02:30">válido até 02:30</span></p>
+    <p class="status"><span class="led-status" aria-hidden="true"></span><span id="veredito-rot">Veredito</span></p>
+    <h2 id="veredito">Não compensa observar hoje</h2>
+    <ul class="motivos"><li>Transparência baixa: nuvens ou muita umidade</li><li>Risco alto de chuva ou trovoada</li><li>Seeing ruim: imagem tremida em alta ampliação</li></ul>
+    <p class="fonte">Previsão para a noite, com alvo às <span class="mono">21:00</span>. Fontes: radiossonda e satélite <span class="nb">GOES-19</span>.</p>
+    <a class="botao" href="relatorios/Wykrota_20261127T0300Z.pdf">Abrir o relatório completo (PDF)</a>
+  </div>
+  <aside class="equipamento" aria-label="Equipamento recomendado">
+    <p class="eq-rot">Equipamento recomendado</p>
+    <div class="eq-icone"><svg class="" viewBox="0 0 24 24" width="40" height="40" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 11.5 11-5 1.8 3.8-11 5Z" opacity=".55"/><path d="M10 14.5 6.5 21M10 14.5l3.5 6.5" opacity=".55"/><path d="M3 3l18 18"/></svg></div>
+    <p class="eq-nome">Equipamento guardado</p>
+    <p class="eq-txt">Não vale levar o equipamento para a serra nesta noite.</p>
+    <ul class="chips"><li><span class="led n1" aria-hidden="true"></span><span class="chip-nome">Céu profundo</span><span class="chip-val">Desfavorável</span></li><li><span class="led n1" aria-hidden="true"></span><span class="chip-nome">Planetária e lunar</span><span class="chip-val">Desfavorável</span></li></ul>
+  </aside>
+</section>
+<section class="grupo" aria-labelledby="g-atm">
+  <h3 id="g-atm">Condições atmosféricas</h3>
+  <div class="cards c4"><div class="card "><p class="rot">Transparência</p><div class="valor-linha"><p class="valor mono">1<span class="de"> de 10</span></p><span class="medidor m10" role="img" aria-label="1 de 10"><span class="n1"></span><span class="vazio"></span><span class="vazio"></span><span class="vazio"></span><span class="vazio"></span><span class="vazio"></span><span class="vazio"></span><span class="vazio"></span><span class="vazio"></span><span class="vazio"></span></span></div><p class=rodape>válido até <span class="mono">02:30</span></p></div><div class="card "><p class="rot">Seeing</p><div class="valor-linha"><p class="valor mono">3<span class="de"> de 10</span></p><span class="medidor m10" role="img" aria-label="3 de 10"><span class="n2"></span><span class="n2"></span><span class="n2"></span><span class="vazio"></span><span class="vazio"></span><span class="vazio"></span><span class="vazio"></span><span class="vazio"></span><span class="vazio"></span><span class="vazio"></span></span></div><p class=rodape>válido até <span class="mono">06:00</span></p></div><div class="card "><p class="rot">Chuva</p><div class="valor-linha"><p class="valor"><span class="led n1" aria-hidden="true"></span>risco alto</p></div><p class=rodape>válido até <span class="mono">02:30</span></p></div><div class="card "><p class="rot">Orvalho</p><div class="valor-linha"><p class="valor"><span class="led n3" aria-hidden="true"></span>risco moderado</p></div><p class=rodape>até o amanhecer (<span class="mono">06:00</span>)</p></div></div>
+</section>
+<section class="grupo" aria-labelledby="g-alvos">
+  <h3 id="g-alvos">Alvos e céu</h3>
+  <div class="cards c3"><div class="card "><p class="rot">Céu profundo</p><div class="valor-linha"><p class="valor"><span class="led n1" aria-hidden="true"></span>Desfavorável</p></div><p class=rodape>galáxias, nebulosas, longa exposição</p></div><div class="card "><p class="rot">Planetária e lunar</p><div class="valor-linha"><p class="valor"><span class="led n1" aria-hidden="true"></span>Desfavorável</p></div><p class=rodape>planetas, Lua, alta ampliação</p></div><div class="card card-lua"><p class="rot">Lua</p><div class="valor-linha"><svg class="lua" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><circle cx="12" cy="12" r="11" class="lua-sombra"/><path d="M12,1 A11,11 0 0 1 12,23 A9.68,11 0 0 1 12,1 Z" class="lua-luz"/></svg><p class="valor"><span class="mono">94%</span> iluminada</p></div><p class=rodape>fase minguante</p></div></div>
+</section>
+<section class="legenda" aria-labelledby="g-noites">
+  <h3 id="g-noites">Noites anteriores e de hoje</h3>
+  <ul class="escala" aria-label="Cores: condição para observação">
+    <li><span class="sw n5"></span>muito favorável</li><li><span class="sw n4"></span>favorável</li>
+    <li><span class="sw n3"></span>neutro</li><li><span class="sw n2"></span>desfavorável</li>
+    <li><span class="sw n1"></span>muito desfavorável</li>
+  </ul>
+  <details id="como-ler">
+    <summary><svg class="" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6"/><circle cx="12" cy="7.6" r=".6" fill="currentColor"/></svg><span>Como ler a tabela e as cores</span></summary>
+    <div class="explica">
+      <p><strong>Cores (condição para observação).</strong> Quanto mais forte o tom, melhor para observar.
+      Em Chuva e Orvalho, o tom de "muito favorável" indica risco baixo.</p>
+      <p><strong>Siglas dentro dos blocos</strong></p>
+      <ul>
+        <li><strong class="mono">1 a 10:</strong> nota geral da condição (transparência e seeing)</li>
+        <li><strong class="mono">B / M / A / MA:</strong> risco baixo, moderado, alto ou muito alto</li>
+        <li><strong class="mono">Op.</strong> <strong>(em Observar):</strong> oportunista (apenas um setup leve, se abrir)</li>
+      </ul>
+      <p>Todos os horários da página estão no horário de Brasília (UTC−3).</p>
+      <p>Cada coluna é um horário em que a previsão foi atualizada; a coluna destacada é a do horário-alvo.
+      Toque em qualquer bloco para abrir o relatório completo daquele horário.</p>
+    </div>
+  </details>
+</section>
+<section class="noite">
+  <h4>Noite de <span class="mono">26/11</span> para <span class="mono">27/11</span></h4>
+  <div class="rolagem" tabindex="0" aria-label="Tabela da noite de 26/11; role para o lado para ver todos os horários">
+  <table class="matriz">
+    <thead><tr><th scope="col" class="canto"><span class="sr">Item</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261126T2300Z.pdf">20:00</a><span class="marca">&nbsp;</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261126T2330Z.pdf">20:30</a><span class="marca">&nbsp;</span></th><th scope="col" class="alvo"><a class="mono" href="relatorios/Wykrota_20261127T0000Z.pdf">21:00</a><span class="marca">alvo</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261127T0030Z.pdf">21:30</a><span class="marca">&nbsp;</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261127T0100Z.pdf">22:00</a><span class="marca">&nbsp;</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261127T0130Z.pdf">22:30</a><span class="marca">&nbsp;</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261127T0200Z.pdf">23:00</a><span class="marca">&nbsp;</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261127T0230Z.pdf">23:30</a><span class="marca">&nbsp;</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261127T0300Z.pdf">00:00</a><span class="marca">&nbsp;</span></th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Transparência<span class="dica">nota de 1 a 10</span></th><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T2300Z.pdf" title="Transparência: nota 1 de 10 (20:00). Abrir relatório" aria-label="Transparência: nota 1 de 10, 20:00. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T2330Z.pdf" title="Transparência: nota 1 de 10 (20:30). Abrir relatório" aria-label="Transparência: nota 1 de 10, 20:30. Abrir relatório">1</a></td><td class="alvo"><a class="b mono n1" href="relatorios/Wykrota_20261127T0000Z.pdf" title="Transparência: nota 1 de 10 (21:00). Abrir relatório" aria-label="Transparência: nota 1 de 10, 21:00. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261127T0030Z.pdf" title="Transparência: nota 1 de 10 (21:30). Abrir relatório" aria-label="Transparência: nota 1 de 10, 21:30. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261127T0100Z.pdf" title="Transparência: nota 1 de 10 (22:00). Abrir relatório" aria-label="Transparência: nota 1 de 10, 22:00. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261127T0130Z.pdf" title="Transparência: nota 1 de 10 (22:30). Abrir relatório" aria-label="Transparência: nota 1 de 10, 22:30. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261127T0200Z.pdf" title="Transparência: nota 1 de 10 (23:00). Abrir relatório" aria-label="Transparência: nota 1 de 10, 23:00. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261127T0230Z.pdf" title="Transparência: nota 1 de 10 (23:30). Abrir relatório" aria-label="Transparência: nota 1 de 10, 23:30. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261127T0300Z.pdf" title="Transparência: nota 1 de 10 (00:00). Abrir relatório" aria-label="Transparência: nota 1 de 10, 00:00. Abrir relatório">1</a></td></tr>
+      <tr><th scope="row">Seeing<span class="dica">nota de 1 a 10</span></th><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261126T2300Z.pdf" title="Seeing: nota 6 de 10 (20:00). Abrir relatório" aria-label="Seeing: nota 6 de 10, 20:00. Abrir relatório">6</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261126T2330Z.pdf" title="Seeing: nota 6 de 10 (20:30). Abrir relatório" aria-label="Seeing: nota 6 de 10, 20:30. Abrir relatório">6</a></td><td class="alvo"><a class="b mono n3" href="relatorios/Wykrota_20261127T0000Z.pdf" title="Seeing: nota 6 de 10 (21:00). Abrir relatório" aria-label="Seeing: nota 6 de 10, 21:00. Abrir relatório">6</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261127T0030Z.pdf" title="Seeing: nota 6 de 10 (21:30). Abrir relatório" aria-label="Seeing: nota 6 de 10, 21:30. Abrir relatório">6</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261127T0100Z.pdf" title="Seeing: nota 6 de 10 (22:00). Abrir relatório" aria-label="Seeing: nota 6 de 10, 22:00. Abrir relatório">6</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261127T0130Z.pdf" title="Seeing: nota 6 de 10 (22:30). Abrir relatório" aria-label="Seeing: nota 6 de 10, 22:30. Abrir relatório">6</a></td><td class=""><a class="b mono n2" href="relatorios/Wykrota_20261127T0200Z.pdf" title="Seeing: nota 3 de 10 (23:00). Abrir relatório" aria-label="Seeing: nota 3 de 10, 23:00. Abrir relatório">3</a></td><td class=""><a class="b mono n2" href="relatorios/Wykrota_20261127T0230Z.pdf" title="Seeing: nota 3 de 10 (23:30). Abrir relatório" aria-label="Seeing: nota 3 de 10, 23:30. Abrir relatório">3</a></td><td class=""><a class="b mono n2" href="relatorios/Wykrota_20261127T0300Z.pdf" title="Seeing: nota 3 de 10 (00:00). Abrir relatório" aria-label="Seeing: nota 3 de 10, 00:00. Abrir relatório">3</a></td></tr>
+      <tr><th scope="row">Chuva<span class="dica">risco</span></th><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T2300Z.pdf" title="Chuva: alto (20:00). Abrir relatório" aria-label="Chuva: alto, 20:00. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T2330Z.pdf" title="Chuva: alto (20:30). Abrir relatório" aria-label="Chuva: alto, 20:30. Abrir relatório">A</a></td><td class="alvo"><a class="b mono n1" href="relatorios/Wykrota_20261127T0000Z.pdf" title="Chuva: alto (21:00). Abrir relatório" aria-label="Chuva: alto, 21:00. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261127T0030Z.pdf" title="Chuva: alto (21:30). Abrir relatório" aria-label="Chuva: alto, 21:30. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261127T0100Z.pdf" title="Chuva: alto (22:00). Abrir relatório" aria-label="Chuva: alto, 22:00. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261127T0130Z.pdf" title="Chuva: alto (22:30). Abrir relatório" aria-label="Chuva: alto, 22:30. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261127T0200Z.pdf" title="Chuva: alto (23:00). Abrir relatório" aria-label="Chuva: alto, 23:00. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261127T0230Z.pdf" title="Chuva: alto (23:30). Abrir relatório" aria-label="Chuva: alto, 23:30. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261127T0300Z.pdf" title="Chuva: alto (00:00). Abrir relatório" aria-label="Chuva: alto, 00:00. Abrir relatório">A</a></td></tr>
+      <tr><th scope="row">Orvalho<span class="dica">risco</span></th><td class=""><a class="b mono n5" href="relatorios/Wykrota_20261126T2300Z.pdf" title="Orvalho: baixo (20:00). Abrir relatório" aria-label="Orvalho: baixo, 20:00. Abrir relatório">B</a></td><td class=""><a class="b mono n5" href="relatorios/Wykrota_20261126T2330Z.pdf" title="Orvalho: baixo (20:30). Abrir relatório" aria-label="Orvalho: baixo, 20:30. Abrir relatório">B</a></td><td class="alvo"><a class="b mono n5" href="relatorios/Wykrota_20261127T0000Z.pdf" title="Orvalho: baixo (21:00). Abrir relatório" aria-label="Orvalho: baixo, 21:00. Abrir relatório">B</a></td><td class=""><a class="b mono n5" href="relatorios/Wykrota_20261127T0030Z.pdf" title="Orvalho: baixo (21:30). Abrir relatório" aria-label="Orvalho: baixo, 21:30. Abrir relatório">B</a></td><td class=""><a class="b mono n5" href="relatorios/Wykrota_20261127T0100Z.pdf" title="Orvalho: baixo (22:00). Abrir relatório" aria-label="Orvalho: baixo, 22:00. Abrir relatório">B</a></td><td class=""><a class="b mono n5" href="relatorios/Wykrota_20261127T0130Z.pdf" title="Orvalho: baixo (22:30). Abrir relatório" aria-label="Orvalho: baixo, 22:30. Abrir relatório">B</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261127T0200Z.pdf" title="Orvalho: moderado (23:00). Abrir relatório" aria-label="Orvalho: moderado, 23:00. Abrir relatório">M</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261127T0230Z.pdf" title="Orvalho: moderado (23:30). Abrir relatório" aria-label="Orvalho: moderado, 23:30. Abrir relatório">M</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261127T0300Z.pdf" title="Orvalho: moderado (00:00). Abrir relatório" aria-label="Orvalho: moderado, 00:00. Abrir relatório">M</a></td></tr>
+      <tr><th scope="row">Observar<span class="dica">veredito</span></th><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T2300Z.pdf" title="Observar: Não (20:00). Abrir relatório" aria-label="Observar: Não, 20:00. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T2330Z.pdf" title="Observar: Não (20:30). Abrir relatório" aria-label="Observar: Não, 20:30. Abrir relatório">Não</a></td><td class="alvo"><a class="b mono n1" href="relatorios/Wykrota_20261127T0000Z.pdf" title="Observar: Não (21:00). Abrir relatório" aria-label="Observar: Não, 21:00. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261127T0030Z.pdf" title="Observar: Não (21:30). Abrir relatório" aria-label="Observar: Não, 21:30. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261127T0100Z.pdf" title="Observar: Não (22:00). Abrir relatório" aria-label="Observar: Não, 22:00. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261127T0130Z.pdf" title="Observar: Não (22:30). Abrir relatório" aria-label="Observar: Não, 22:30. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261127T0200Z.pdf" title="Observar: Não (23:00). Abrir relatório" aria-label="Observar: Não, 23:00. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261127T0230Z.pdf" title="Observar: Não (23:30). Abrir relatório" aria-label="Observar: Não, 23:30. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261127T0300Z.pdf" title="Observar: Não (00:00). Abrir relatório" aria-label="Observar: Não, 00:00. Abrir relatório">Não</a></td></tr>
+    </tbody>
+  </table></div>
+</section>
+<section class="noite">
+  <h4>Noite de <span class="mono">25/11</span> para <span class="mono">26/11</span></h4>
+  <div class="rolagem" tabindex="0" aria-label="Tabela da noite de 25/11; role para o lado para ver todos os horários">
+  <table class="matriz">
+    <thead><tr><th scope="col" class="canto"><span class="sr">Item</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261125T2300Z.pdf">20:00</a><span class="marca">&nbsp;</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261125T2330Z.pdf">20:30</a><span class="marca">&nbsp;</span></th><th scope="col" class="alvo"><a class="mono" href="relatorios/Wykrota_20261126T0000Z.pdf">21:00</a><span class="marca">alvo</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261126T0030Z.pdf">21:30</a><span class="marca">&nbsp;</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261126T0100Z.pdf">22:00</a><span class="marca">&nbsp;</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261126T0130Z.pdf">22:30</a><span class="marca">&nbsp;</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261126T0200Z.pdf">23:00</a><span class="marca">&nbsp;</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261126T0230Z.pdf">23:30</a><span class="marca">&nbsp;</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261126T0300Z.pdf">00:00</a><span class="marca">&nbsp;</span></th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Transparência<span class="dica">nota de 1 a 10</span></th><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T2300Z.pdf" title="Transparência: nota 1 de 10 (20:00). Abrir relatório" aria-label="Transparência: nota 1 de 10, 20:00. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T2330Z.pdf" title="Transparência: nota 1 de 10 (20:30). Abrir relatório" aria-label="Transparência: nota 1 de 10, 20:30. Abrir relatório">1</a></td><td class="alvo"><a class="b mono n1" href="relatorios/Wykrota_20261126T0000Z.pdf" title="Transparência: nota 1 de 10 (21:00). Abrir relatório" aria-label="Transparência: nota 1 de 10, 21:00. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T0030Z.pdf" title="Transparência: nota 1 de 10 (21:30). Abrir relatório" aria-label="Transparência: nota 1 de 10, 21:30. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T0100Z.pdf" title="Transparência: nota 1 de 10 (22:00). Abrir relatório" aria-label="Transparência: nota 1 de 10, 22:00. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T0130Z.pdf" title="Transparência: nota 1 de 10 (22:30). Abrir relatório" aria-label="Transparência: nota 1 de 10, 22:30. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T0200Z.pdf" title="Transparência: nota 1 de 10 (23:00). Abrir relatório" aria-label="Transparência: nota 1 de 10, 23:00. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T0230Z.pdf" title="Transparência: nota 1 de 10 (23:30). Abrir relatório" aria-label="Transparência: nota 1 de 10, 23:30. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T0300Z.pdf" title="Transparência: nota 1 de 10 (00:00). Abrir relatório" aria-label="Transparência: nota 1 de 10, 00:00. Abrir relatório">1</a></td></tr>
+      <tr><th scope="row">Seeing<span class="dica">nota de 1 a 10</span></th><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261125T2300Z.pdf" title="Seeing: nota 6 de 10 (20:00). Abrir relatório" aria-label="Seeing: nota 6 de 10, 20:00. Abrir relatório">6</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261125T2330Z.pdf" title="Seeing: nota 6 de 10 (20:30). Abrir relatório" aria-label="Seeing: nota 6 de 10, 20:30. Abrir relatório">6</a></td><td class="alvo"><a class="b mono n3" href="relatorios/Wykrota_20261126T0000Z.pdf" title="Seeing: nota 6 de 10 (21:00). Abrir relatório" aria-label="Seeing: nota 6 de 10, 21:00. Abrir relatório">6</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261126T0030Z.pdf" title="Seeing: nota 6 de 10 (21:30). Abrir relatório" aria-label="Seeing: nota 6 de 10, 21:30. Abrir relatório">6</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261126T0100Z.pdf" title="Seeing: nota 6 de 10 (22:00). Abrir relatório" aria-label="Seeing: nota 6 de 10, 22:00. Abrir relatório">6</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261126T0130Z.pdf" title="Seeing: nota 6 de 10 (22:30). Abrir relatório" aria-label="Seeing: nota 6 de 10, 22:30. Abrir relatório">6</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261126T0200Z.pdf" title="Seeing: nota 6 de 10 (23:00). Abrir relatório" aria-label="Seeing: nota 6 de 10, 23:00. Abrir relatório">6</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261126T0230Z.pdf" title="Seeing: nota 6 de 10 (23:30). Abrir relatório" aria-label="Seeing: nota 6 de 10, 23:30. Abrir relatório">6</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261126T0300Z.pdf" title="Seeing: nota 6 de 10 (00:00). Abrir relatório" aria-label="Seeing: nota 6 de 10, 00:00. Abrir relatório">6</a></td></tr>
+      <tr><th scope="row">Chuva<span class="dica">risco</span></th><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T2300Z.pdf" title="Chuva: alto (20:00). Abrir relatório" aria-label="Chuva: alto, 20:00. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T2330Z.pdf" title="Chuva: alto (20:30). Abrir relatório" aria-label="Chuva: alto, 20:30. Abrir relatório">A</a></td><td class="alvo"><a class="b mono n1" href="relatorios/Wykrota_20261126T0000Z.pdf" title="Chuva: alto (21:00). Abrir relatório" aria-label="Chuva: alto, 21:00. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T0030Z.pdf" title="Chuva: alto (21:30). Abrir relatório" aria-label="Chuva: alto, 21:30. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T0100Z.pdf" title="Chuva: alto (22:00). Abrir relatório" aria-label="Chuva: alto, 22:00. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T0130Z.pdf" title="Chuva: alto (22:30). Abrir relatório" aria-label="Chuva: alto, 22:30. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T0200Z.pdf" title="Chuva: alto (23:00). Abrir relatório" aria-label="Chuva: alto, 23:00. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T0230Z.pdf" title="Chuva: alto (23:30). Abrir relatório" aria-label="Chuva: alto, 23:30. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T0300Z.pdf" title="Chuva: alto (00:00). Abrir relatório" aria-label="Chuva: alto, 00:00. Abrir relatório">A</a></td></tr>
+      <tr><th scope="row">Orvalho<span class="dica">risco</span></th><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261125T2300Z.pdf" title="Orvalho: moderado (20:00). Abrir relatório" aria-label="Orvalho: moderado, 20:00. Abrir relatório">M</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261125T2330Z.pdf" title="Orvalho: moderado (20:30). Abrir relatório" aria-label="Orvalho: moderado, 20:30. Abrir relatório">M</a></td><td class="alvo"><a class="b mono n3" href="relatorios/Wykrota_20261126T0000Z.pdf" title="Orvalho: moderado (21:00). Abrir relatório" aria-label="Orvalho: moderado, 21:00. Abrir relatório">M</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261126T0030Z.pdf" title="Orvalho: moderado (21:30). Abrir relatório" aria-label="Orvalho: moderado, 21:30. Abrir relatório">M</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261126T0100Z.pdf" title="Orvalho: moderado (22:00). Abrir relatório" aria-label="Orvalho: moderado, 22:00. Abrir relatório">M</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261126T0130Z.pdf" title="Orvalho: moderado (22:30). Abrir relatório" aria-label="Orvalho: moderado, 22:30. Abrir relatório">M</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261126T0200Z.pdf" title="Orvalho: moderado (23:00). Abrir relatório" aria-label="Orvalho: moderado, 23:00. Abrir relatório">M</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261126T0230Z.pdf" title="Orvalho: moderado (23:30). Abrir relatório" aria-label="Orvalho: moderado, 23:30. Abrir relatório">M</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261126T0300Z.pdf" title="Orvalho: moderado (00:00). Abrir relatório" aria-label="Orvalho: moderado, 00:00. Abrir relatório">M</a></td></tr>
+      <tr><th scope="row">Observar<span class="dica">veredito</span></th><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T2300Z.pdf" title="Observar: Não (20:00). Abrir relatório" aria-label="Observar: Não, 20:00. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T2330Z.pdf" title="Observar: Não (20:30). Abrir relatório" aria-label="Observar: Não, 20:30. Abrir relatório">Não</a></td><td class="alvo"><a class="b mono n1" href="relatorios/Wykrota_20261126T0000Z.pdf" title="Observar: Não (21:00). Abrir relatório" aria-label="Observar: Não, 21:00. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T0030Z.pdf" title="Observar: Não (21:30). Abrir relatório" aria-label="Observar: Não, 21:30. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T0100Z.pdf" title="Observar: Não (22:00). Abrir relatório" aria-label="Observar: Não, 22:00. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T0130Z.pdf" title="Observar: Não (22:30). Abrir relatório" aria-label="Observar: Não, 22:30. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T0200Z.pdf" title="Observar: Não (23:00). Abrir relatório" aria-label="Observar: Não, 23:00. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T0230Z.pdf" title="Observar: Não (23:30). Abrir relatório" aria-label="Observar: Não, 23:30. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261126T0300Z.pdf" title="Observar: Não (00:00). Abrir relatório" aria-label="Observar: Não, 00:00. Abrir relatório">Não</a></td></tr>
+    </tbody>
+  </table></div>
+</section>
+<section class="noite">
+  <h4>Noite de <span class="mono">24/11</span> para <span class="mono">25/11</span></h4>
+  <div class="rolagem" tabindex="0" aria-label="Tabela da noite de 24/11; role para o lado para ver todos os horários">
+  <table class="matriz">
+    <thead><tr><th scope="col" class="canto"><span class="sr">Item</span></th><th scope="col" class="alvo"><a class="mono" href="relatorios/Wykrota_20261125T0003Z.pdf">21:03</a><span class="marca">alvo</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261125T0030Z.pdf">21:30</a><span class="marca">&nbsp;</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261125T0100Z.pdf">22:00</a><span class="marca">&nbsp;</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261125T0130Z.pdf">22:30</a><span class="marca">&nbsp;</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261125T0200Z.pdf">23:00</a><span class="marca">&nbsp;</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261125T0230Z.pdf">23:30</a><span class="marca">&nbsp;</span></th><th scope="col" class=""><a class="mono" href="relatorios/Wykrota_20261125T0300Z.pdf">00:00</a><span class="marca">&nbsp;</span></th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Transparência<span class="dica">nota de 1 a 10</span></th><td class="alvo"><a class="b mono n1" href="relatorios/Wykrota_20261125T0003Z.pdf" title="Transparência: nota 1 de 10 (21:03). Abrir relatório" aria-label="Transparência: nota 1 de 10, 21:03. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0030Z.pdf" title="Transparência: nota 1 de 10 (21:30). Abrir relatório" aria-label="Transparência: nota 1 de 10, 21:30. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0100Z.pdf" title="Transparência: nota 1 de 10 (22:00). Abrir relatório" aria-label="Transparência: nota 1 de 10, 22:00. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0130Z.pdf" title="Transparência: nota 1 de 10 (22:30). Abrir relatório" aria-label="Transparência: nota 1 de 10, 22:30. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0200Z.pdf" title="Transparência: nota 1 de 10 (23:00). Abrir relatório" aria-label="Transparência: nota 1 de 10, 23:00. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0230Z.pdf" title="Transparência: nota 1 de 10 (23:30). Abrir relatório" aria-label="Transparência: nota 1 de 10, 23:30. Abrir relatório">1</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0300Z.pdf" title="Transparência: nota 1 de 10 (00:00). Abrir relatório" aria-label="Transparência: nota 1 de 10, 00:00. Abrir relatório">1</a></td></tr>
+      <tr><th scope="row">Seeing<span class="dica">nota de 1 a 10</span></th><td class="alvo"><a class="b mono n3" href="relatorios/Wykrota_20261125T0003Z.pdf" title="Seeing: nota 6 de 10 (21:03). Abrir relatório" aria-label="Seeing: nota 6 de 10, 21:03. Abrir relatório">6</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261125T0030Z.pdf" title="Seeing: nota 6 de 10 (21:30). Abrir relatório" aria-label="Seeing: nota 6 de 10, 21:30. Abrir relatório">6</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261125T0100Z.pdf" title="Seeing: nota 6 de 10 (22:00). Abrir relatório" aria-label="Seeing: nota 6 de 10, 22:00. Abrir relatório">6</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261125T0130Z.pdf" title="Seeing: nota 6 de 10 (22:30). Abrir relatório" aria-label="Seeing: nota 6 de 10, 22:30. Abrir relatório">6</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261125T0200Z.pdf" title="Seeing: nota 6 de 10 (23:00). Abrir relatório" aria-label="Seeing: nota 6 de 10, 23:00. Abrir relatório">6</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261125T0230Z.pdf" title="Seeing: nota 6 de 10 (23:30). Abrir relatório" aria-label="Seeing: nota 6 de 10, 23:30. Abrir relatório">6</a></td><td class=""><a class="b mono n3" href="relatorios/Wykrota_20261125T0300Z.pdf" title="Seeing: nota 6 de 10 (00:00). Abrir relatório" aria-label="Seeing: nota 6 de 10, 00:00. Abrir relatório">6</a></td></tr>
+      <tr><th scope="row">Chuva<span class="dica">risco</span></th><td class="alvo"><a class="b mono n1" href="relatorios/Wykrota_20261125T0003Z.pdf" title="Chuva: alto (21:03). Abrir relatório" aria-label="Chuva: alto, 21:03. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0030Z.pdf" title="Chuva: alto (21:30). Abrir relatório" aria-label="Chuva: alto, 21:30. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0100Z.pdf" title="Chuva: alto (22:00). Abrir relatório" aria-label="Chuva: alto, 22:00. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0130Z.pdf" title="Chuva: alto (22:30). Abrir relatório" aria-label="Chuva: alto, 22:30. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0200Z.pdf" title="Chuva: alto (23:00). Abrir relatório" aria-label="Chuva: alto, 23:00. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0230Z.pdf" title="Chuva: alto (23:30). Abrir relatório" aria-label="Chuva: alto, 23:30. Abrir relatório">A</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0300Z.pdf" title="Chuva: alto (00:00). Abrir relatório" aria-label="Chuva: alto, 00:00. Abrir relatório">A</a></td></tr>
+      <tr><th scope="row">Orvalho<span class="dica">risco</span></th><td class="alvo"><a class="b mono n1" href="relatorios/Wykrota_20261125T0003Z.pdf" title="Orvalho: muito alto (21:03). Abrir relatório" aria-label="Orvalho: muito alto, 21:03. Abrir relatório">MA</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0030Z.pdf" title="Orvalho: muito alto (21:30). Abrir relatório" aria-label="Orvalho: muito alto, 21:30. Abrir relatório">MA</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0100Z.pdf" title="Orvalho: muito alto (22:00). Abrir relatório" aria-label="Orvalho: muito alto, 22:00. Abrir relatório">MA</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0130Z.pdf" title="Orvalho: muito alto (22:30). Abrir relatório" aria-label="Orvalho: muito alto, 22:30. Abrir relatório">MA</a></td><td class=""><a class="b mono n5" href="relatorios/Wykrota_20261125T0200Z.pdf" title="Orvalho: baixo (23:00). Abrir relatório" aria-label="Orvalho: baixo, 23:00. Abrir relatório">B</a></td><td class=""><a class="b mono n5" href="relatorios/Wykrota_20261125T0230Z.pdf" title="Orvalho: baixo (23:30). Abrir relatório" aria-label="Orvalho: baixo, 23:30. Abrir relatório">B</a></td><td class=""><a class="b mono n5" href="relatorios/Wykrota_20261125T0300Z.pdf" title="Orvalho: baixo (00:00). Abrir relatório" aria-label="Orvalho: baixo, 00:00. Abrir relatório">B</a></td></tr>
+      <tr><th scope="row">Observar<span class="dica">veredito</span></th><td class="alvo"><a class="b mono n1" href="relatorios/Wykrota_20261125T0003Z.pdf" title="Observar: Não (21:03). Abrir relatório" aria-label="Observar: Não, 21:03. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0030Z.pdf" title="Observar: Não (21:30). Abrir relatório" aria-label="Observar: Não, 21:30. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0100Z.pdf" title="Observar: Não (22:00). Abrir relatório" aria-label="Observar: Não, 22:00. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0130Z.pdf" title="Observar: Não (22:30). Abrir relatório" aria-label="Observar: Não, 22:30. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0200Z.pdf" title="Observar: Não (23:00). Abrir relatório" aria-label="Observar: Não, 23:00. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0230Z.pdf" title="Observar: Não (23:30). Abrir relatório" aria-label="Observar: Não, 23:30. Abrir relatório">Não</a></td><td class=""><a class="b mono n1" href="relatorios/Wykrota_20261125T0300Z.pdf" title="Observar: Não (00:00). Abrir relatório" aria-label="Observar: Não, 00:00. Abrir relatório">Não</a></td></tr>
+    </tbody>
+  </table></div>
+</section>
+</main>
+<footer>
+  <p>As notas são estimativas automáticas feitas por regras heurísticas, ainda em fase experimental.
+  Antes de subir a serra, confira também o céu no satélite e as condições locais.</p>
+  <p>Relatórios dos últimos 7 dias. Página gerada às <span class="mono">13:53</span> de
+  <span class="mono">27/11/2026</span>, horário de Brasília (UTC−3).
+  Código-fonte e documentação: <a href="https://github.com/jjamancio/wykrota-nowcast">https://github.com/jjamancio/wykrota-nowcast</a> (GPL-3.0).</p>
+</footer>
+<script>
+(function () {
+  var c = document.body, b = document.getElementById("modo");
+  function sync() { var on = c.classList.contains("noturno"); b.setAttribute("aria-pressed", on ? "true" : "false");
+    b.title = on ? "Voltar às cores normais" : "Cores vermelhas para preservar a visão no escuro";
+    var m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = on ? "#050000" : "#080B12"; }
+  b.addEventListener("click", function () { c.classList.toggle("noturno");
+    try { localStorage.setItem("modoVermelho", c.classList.contains("noturno") ? "1" : "0"); } catch (e) {}
+    sync(); });
+  sync();
+
+  // Validade: banner âmbar no topo e selo "vencido" quando o relatório passa da validade
+  var selo = document.querySelector(".selo"), banner = document.querySelector(".banner-expirado"),
+      dec = document.querySelector(".decisao");
+  if (selo && new Date(selo.getAttribute("data-ate")) < new Date()) {
+    selo.classList.add("vencido"); selo.textContent = "vencido às " + selo.getAttribute("data-hora");
+    if (banner) banner.hidden = false;
+    if (dec) dec.classList.add("vencida");
+  }
+})();
+</script>
+</body>
+</html>
